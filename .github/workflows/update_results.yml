@@ -1,0 +1,43 @@
+name: Actualizar Resultados Mundial en Vivo
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-results:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run update script
+        env:
+          TOKENAPIMUNDIAL2026: ${{ secrets.TOKENAPIMUNDIAL2026 }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            node .github/scripts/update_results.js --force
+          else
+            node .github/scripts/update_results.js
+          fi
+
+      - name: Commit and push if results changed
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add results.json
+          if git diff --cached --quiet; then
+            echo "No changes in results.json"
+          else
+            git commit -m "Auto-update live results from API-Football [skip ci]"
+            git push
+          fi

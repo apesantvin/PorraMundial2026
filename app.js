@@ -104,28 +104,13 @@ async function initApp() {
             }
         });
 
-        // 3. Process points and render UI immediately using cache
+        // 3. Process points and render UI immediately
         updateAppUI();
 
-        // 4. Background fetch if cache is stale (> 5 min) or has active live matches
-        const now = Date.now();
-        const timeSinceUpdate = now - (apiCache.last_updated || 0);
-
-        let hasActiveLiveMatch = false;
-        Object.values(apiCache.matches || {}).forEach(cObj => {
-            if (cObj.status === "live") hasActiveLiveMatch = true;
-        });
-        Object.values(apiCache.ko_matches || {}).forEach(cObj => {
-            if (cObj.status === "live") hasActiveLiveMatch = true;
-        });
-
-        const shouldFetch = timeSinceUpdate > 5 * 60 * 1000 || hasActiveLiveMatch || !apiCache.last_updated;
-
-        if (shouldFetch) {
-            loadLiveResults().then(() => {
-                updateAppUI();
-            });
-        }
+        // 4. Setup live matches check and auto-refresh
+        setupLiveRefresh();
+        // Check periodically if matches have started to enable/disable live refreshes
+        setInterval(setupLiveRefresh, 5 * 60 * 1000);
 
     } catch (e) {
         console.error("Error loading application files", e);
@@ -1726,5 +1711,81 @@ function downloadResultsJSON() {
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+}
+
+// --- 🔴 AUTOMATIC LIVE UPDATES & POLLING LOGIC ---
+let liveRefreshInterval = null;
+
+// Check if any match is currently playing (live window: [fecha - 15 min, fecha + 3 hours])
+function isAnyMatchLive() {
+    if (!porraData || !porraData.matches) return false;
+    const now = Date.now();
+    const SPAIN_OFFSET = '+02:00'; // Spain time offset (CEST during June/July)
+    
+    return porraData.matches.some(m => {
+        const matchTime = new Date(m.fecha.replace(' ', 'T') + SPAIN_OFFSET).getTime();
+        // 15 minutes before to 3 hours after
+        return now >= (matchTime - 15 * 60 * 1000) && now <= (matchTime + 3 * 60 * 60 * 1000);
+    });
+}
+
+// Function to refresh results.json from the server
+async function refreshResults() {
+    const refreshBtn = document.getElementById('live-refresh-btn');
+    if (refreshBtn) refreshBtn.classList.add('spinning');
+    
+    try {
+        console.log("Refreshing results.json from server...");
+        // Add cache buster query parameter to bypass browser caching
+        const response = await fetch(`results.json?t=${Date.now()}`);
+        if (!response.ok) throw new Error("Failed to fetch results.json");
+        
+        const freshResults = await response.json();
+        if (freshResults && freshResults.matches) {
+            results = freshResults;
+            updateAppUI();
+            console.log("results.json updated successfully.");
+        }
+    } catch (e) {
+        console.error("Error refreshing results:", e);
+    } finally {
+        if (refreshBtn) {
+            // Give it a tiny delay to ensure the spinning animation is visible
+            setTimeout(() => {
+                refreshBtn.classList.remove('spinning');
+            }, 500);
+        }
+    }
+}
+
+// Setup live refresh interval and UI indicator
+function setupLiveRefresh() {
+    const liveIndicator = document.getElementById('live-indicator-container');
+    const refreshBtn = document.getElementById('live-refresh-btn');
+    
+    if (isAnyMatchLive()) {
+        if (liveIndicator) liveIndicator.style.display = 'inline-flex';
+        
+        // Setup automatic polling every 2 minutes
+        if (!liveRefreshInterval) {
+            console.log("Live matches detected. Enabling auto-refresh every 2 minutes.");
+            liveRefreshInterval = setInterval(refreshResults, 2 * 60 * 1000);
+        }
+    } else {
+        if (liveIndicator) liveIndicator.style.display = 'none';
+        if (liveRefreshInterval) {
+            console.log("No live matches. Disabling auto-refresh.");
+            clearInterval(liveRefreshInterval);
+            liveRefreshInterval = null;
+        }
+    }
+    
+    // Bind click event once if button exists and doesn't have it
+    if (refreshBtn && !refreshBtn.dataset.listenerBound) {
+        refreshBtn.addEventListener('click', () => {
+            refreshResults();
+        });
+        refreshBtn.dataset.listenerBound = 'true';
+    }
 }
 
