@@ -553,10 +553,10 @@ function renderStandings(standings) {
             <td class="text-center ${rankClass}">${rankVal}</td>
             <td class="player-row-name">${player.name}</td>
             <td class="text-center bold-score">${player.total.toFixed(1)}</td>
-            <td class="text-center">${player.group_stage.toFixed(1)}</td>
-            <td class="text-center">${player.group_standings.toFixed(1)}</td>
-            <td class="text-center">${player.ko_stages.toFixed(1)}</td>
-            <td class="text-center">${player.honor_list.toFixed(1)}</td>
+            <td class="text-center hide-on-mobile">${player.group_stage.toFixed(1)}</td>
+            <td class="text-center hide-on-mobile">${player.group_standings.toFixed(1)}</td>
+            <td class="text-center hide-on-mobile">${player.ko_stages.toFixed(1)}</td>
+            <td class="text-center hide-on-mobile">${player.honor_list.toFixed(1)}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -570,14 +570,61 @@ function renderMatches() {
     const filteredMatches = porraData.matches.filter(m => {
         if (currentFilter === 'all') return true;
         return m.jor === currentFilter;
+    }).sort((a, b) => {
+        const dateA = new Date(a.fecha.replace(/-/g, "/"));
+        const dateB = new Date(b.fecha.replace(/-/g, "/"));
+        return dateA - dateB;
     });
 
+    // Find the next unplayed match chronologically
+    const nextMatch = filteredMatches.find(m => {
+        const score = results.matches[m.id];
+        return !score || score.trim() === "";
+    });
+    const nextMatchId = nextMatch ? nextMatch.id : null;
+
+    let lastRound = null;
+
     filteredMatches.forEach(m => {
+        // Check if round changed to insert header divider
+        if (m.jor !== lastRound) {
+            lastRound = m.jor;
+            
+            const divider = document.createElement('div');
+            divider.classList.add('round-divider-card');
+            
+            let roundName = '';
+            let roundDesc = '';
+            if (m.jor === 'J1') {
+                roundName = 'Jornada 1';
+                roundDesc = 'Fase de Grupos - Inicio del Torneo ⚽';
+            } else if (m.jor === 'J2') {
+                roundName = 'Jornada 2';
+                roundDesc = 'Fase de Grupos - Partidos Clave ⚔️';
+            } else if (m.jor === 'J3') {
+                roundName = 'Jornada 3';
+                roundDesc = 'Fase de Grupos - Decisiones Finales 🏆';
+            } else {
+                roundName = m.jor;
+                roundDesc = 'Eliminatorias';
+            }
+            
+            divider.innerHTML = `
+                <h3><i class="fa-solid fa-calendar-days"></i> ${roundName}</h3>
+                <span class="round-info">${roundDesc}</span>
+            `;
+            grid.appendChild(divider);
+        }
+
         const actualScore = results.matches[m.id] || '';
         const isPlayed = actualScore.trim() !== "";
         
         const card = document.createElement('div');
         card.classList.add('match-card');
+        
+        if (m.id === nextMatchId) {
+            card.classList.add('next-match-highlight');
+        }
         
         // Split actual score if it exists
         let homeScore = '';
@@ -636,14 +683,106 @@ function renderMatches() {
         }
 
         const cardFooter = `
-            <div class="match-footer">
+            <div class="match-footer" style="margin-bottom:0.4rem;">
                 ${statusLabel}
+                <span class="expand-icon" style="margin-left:auto; color:var(--text-muted); font-size:0.85rem;"><i class="fa-solid fa-chevron-down"></i></span>
             </div>
         `;
 
-        card.innerHTML = cardHeader + cardBody + cardFooter;
+        // Build predictions HTML list
+        const matchKey = `${m.casa}-${m.fuera}`;
+        let predictionsHtml = '';
+        
+        porraData.players.forEach(p => {
+            const pred = porraData.predictions[p].group_stage[matchKey] || '';
+            let predDisplay = '-';
+            let badgeText = "Fallo";
+            let badgeClass = "badge-miss";
+            let pointsText = "0.0 pts";
+            
+            if (pred && pred.includes('|')) {
+                const parts = pred.split('|');
+                predDisplay = parts[1];
+                
+                if (isPlayed) {
+                    const outcome = calcOutcomePoints(actualScore, pred);
+                    if (outcome.class === 'exact') {
+                        badgeText = "Exacto";
+                        badgeClass = "badge-exact";
+                        pointsText = "+2.0 pts";
+                    } else if (outcome.class === 'diff') {
+                        badgeText = "Dif. Goles";
+                        badgeClass = "badge-diff";
+                        pointsText = "+1.0 pt";
+                    } else if (outcome.class === 'sign') {
+                        badgeText = "Signo 1X2";
+                        badgeClass = "badge-sign";
+                        pointsText = "+0.5 pts";
+                    }
+                }
+            }
+            
+            const badgeHtml = isPlayed ? 
+                `<span class="prediction-badge ${badgeClass}">${badgeText}</span>` : 
+                `<span class="prediction-badge badge-miss" style="background:rgba(255,255,255,0.03); color:var(--text-muted); border:1px solid rgba(255,255,255,0.08);">Pendiente</span>`;
+            
+            const ptsColor = (badgeClass === 'badge-exact' || badgeClass === 'badge-diff' || badgeClass === 'badge-sign') ? 'var(--color-success)' : 'var(--text-muted)';
+            const pointsDisplay = isPlayed ? `<span class="pred-player-pts" style="font-weight: 700; min-width: 52px; text-align: right; color: ${ptsColor}; font-size: 0.82rem;">${pointsText}</span>` : '';
+            
+            predictionsHtml += `
+                <div class="pred-player-row">
+                    <span class="pred-player-name">${p}</span>
+                    <div style="display:flex; align-items:center; gap:0.6rem;">
+                        <span class="pred-player-score">${predDisplay}</span>
+                        ${badgeHtml}
+                        ${pointsDisplay}
+                    </div>
+                </div>
+            `;
+        });
+
+        const predictionsDrawer = `
+            <div class="match-predictions-drawer">
+                <div style="font-size:0.75rem; color:var(--color-accent); font-weight:700; text-transform:uppercase; margin-bottom:0.5rem; letter-spacing:0.5px;">Pronósticos de los Participantes</div>
+                <div class="predictions-list">
+                    ${predictionsHtml}
+                </div>
+            </div>
+        `;
+
+        card.innerHTML = cardHeader + cardBody + cardFooter + predictionsDrawer;
+        card.addEventListener('click', () => toggleMatchCard(card));
         grid.appendChild(card);
     });
+}
+
+// Expand/Collapse match card prediction details drawer (along with all cards in the same row)
+function toggleMatchCard(cardElement) {
+    const isExpanded = cardElement.classList.contains('expanded');
+    const targetState = !isExpanded; // true = expand, false = collapse
+    
+    const clickedTop = cardElement.offsetTop;
+    
+    // Find all match cards in the grid
+    const allCards = document.querySelectorAll('#matches-grid .match-card');
+    allCards.forEach(card => {
+        // Check if they are in the same visual row (same offsetTop within 10px tolerance)
+        if (Math.abs(card.offsetTop - clickedTop) < 10) {
+            if (targetState) {
+                card.classList.add('expanded');
+            } else {
+                card.classList.remove('expanded');
+            }
+        }
+    });
+}
+
+// Scroll page to next upcoming match
+function scrollToNextMatch() {
+    const nextMatchEl = document.querySelector('.match-card.next-match-highlight');
+    if (nextMatchEl) {
+        nextMatchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
 }
 
 // Tab navigation handler
@@ -661,6 +800,10 @@ function setupEventListeners() {
             e.currentTarget.classList.add('active');
             document.getElementById(targetTab).classList.add('active');
             activeTab = targetTab;
+
+            if (targetTab === 'partidos') {
+                setTimeout(scrollToNextMatch, 150);
+            }
         });
     });
 
@@ -679,6 +822,8 @@ function setupEventListeners() {
     document.getElementById('player-modal').addEventListener('click', (e) => {
         if (e.target.id === 'player-modal') closePlayerModal();
     });
+    
+
 
     // Modal sub-tabs
     document.querySelectorAll('.tab-sub-btn').forEach(btn => {
@@ -1030,6 +1175,8 @@ function evaluateSingleKOMatch(card, label, predVal, actualMatchObj) {
 function closePlayerModal() {
     document.getElementById('player-modal').classList.remove('open');
 }
+
+
 
 
 // Helper: get HTML for country flag image from flagcdn
