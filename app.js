@@ -8,6 +8,83 @@ let currentFilter = 'all';
 let currentKOFilter = 'all';
 let evolutionChart = null;
 
+// Merges cached live results into the in-memory results object
+function mergeLiveCache() {
+    const liveCache = localStorage.getItem('porra_live_results_cache');
+    if (!liveCache) return;
+    
+    try {
+        const parsedCache = JSON.parse(liveCache);
+        
+        // Merge group stage matches
+        if (parsedCache.matches) {
+            for (const [matchId, score] of Object.entries(parsedCache.matches)) {
+                // If official score is empty, use the live cached score
+                if ((!officialResults.matches[matchId] || officialResults.matches[matchId].trim() === "") && score && score.trim() !== "") {
+                    results.matches[matchId] = score;
+                }
+            }
+        }
+        
+        // Merge K.O. stages
+        const stages = ['r32_matches', 'r16_matches', 'r8_matches', 'r4_matches'];
+        stages.forEach(stage => {
+            if (parsedCache[stage]) {
+                for (const [key, matchObj] of Object.entries(parsedCache[stage])) {
+                    if (matchObj && matchObj.score && matchObj.score.trim() !== "") {
+                        if (results[stage] && results[stage][key] && (!officialResults[stage] || !officialResults[stage][key] || !officialResults[stage][key].score || officialResults[stage][key].score.trim() === "")) {
+                            results[stage][key].score = matchObj.score;
+                            if (matchObj.matchup) {
+                                results[stage][key].matchup = matchObj.matchup;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Single matches (final and 3-4 place)
+        const singleMatches = ['r3_4_match', 'final_match'];
+        singleMatches.forEach(key => {
+            if (parsedCache[key] && parsedCache[key].score && parsedCache[key].score.trim() !== "") {
+                if (results[key] && (!officialResults[key] || !officialResults[key].score || officialResults[key].score.trim() === "")) {
+                    results[key].score = parsedCache[key].score;
+                    if (parsedCache[key].matchup) {
+                        results[key].matchup = parsedCache[key].matchup;
+                    }
+                }
+            }
+        });
+        
+        // Qualified teams lists (r32_teams, r16_teams, etc.)
+        const teamLists = ['r32_teams', 'r16_teams', 'r8_teams', 'r4_teams', 'r3_4_teams', 'final_teams'];
+        teamLists.forEach(listKey => {
+            if (parsedCache[listKey] && Array.isArray(parsedCache[listKey])) {
+                parsedCache[listKey].forEach(team => {
+                    if (results[listKey] && !results[listKey].includes(team)) {
+                        results[listKey].push(team);
+                    }
+                });
+            }
+        });
+
+        // Honor list honors
+        const honors = ['honor_champ', 'honor_runner', 'honor_3rd', 'honor_4th'];
+        honors.forEach(honorKey => {
+            if (parsedCache[honorKey] && parsedCache[honorKey].trim() !== "" && (!officialResults[honorKey] || officialResults[honorKey].trim() === "")) {
+                results[honorKey] = parsedCache[honorKey];
+            }
+        });
+
+        // Provisional matches list
+        if (parsedCache.provisionalMatches && Array.isArray(parsedCache.provisionalMatches)) {
+            parsedCache.provisionalMatches.forEach(id => provisionalMatches.add(String(id)));
+        }
+    } catch (e) {
+        console.error("Error parsing live results cache:", e);
+    }
+}
+
 // Initial load
 document.addEventListener('DOMContentLoaded', async () => {
     await initApp();
@@ -71,6 +148,9 @@ async function initApp() {
         if (results.provisionalMatches && Array.isArray(results.provisionalMatches)) {
             results.provisionalMatches.forEach(id => provisionalMatches.add(String(id)));
         }
+
+        // 2. Merge dynamic live scores cache
+        mergeLiveCache();
 
         // 3. Process points and render UI immediately
         updateAppUI();
@@ -1016,6 +1096,7 @@ function setupEventListeners() {
         clearDraftBtn.addEventListener('click', () => {
             if (confirm("¿Seguro que quieres borrar el borrador local? Se volverán a cargar los datos oficiales del servidor (results.json).")) {
                 localStorage.removeItem('porra_results_draft');
+                localStorage.removeItem('porra_live_results_cache');
                 location.reload();
             }
         });
@@ -1506,13 +1587,13 @@ const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED"]);
 
 async function fetchAndProcessLiveResults() {
     const apiKey = 'fca19012e1774fee9c2d4382feb0325b';
-    const targetUrl = 'https://api.football-data.org/v4/competitions/WC/matches';
+    const targetUrl = `https://api.football-data.org/v4/competitions/WC/matches?t=${Date.now()}`;
     const reqHeadersStr = `X-Auth-Token:${apiKey}`;
     const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}&reqHeaders=${encodeURIComponent(reqHeadersStr)}`;
 
     console.log("Fetching live results from football-data.org via corsproxy.io...");
     try {
-        const response = await fetch(proxyUrl);
+        const response = await fetch(proxyUrl, { cache: "no-store" });
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -1772,7 +1853,8 @@ async function fetchAndProcessLiveResults() {
 
         // Check if anything changed in results JSON to avoid drawing
         if (JSON.stringify(results) !== prevResultsJSON) {
-            console.log("Results changed. Redrawing UI...");
+            console.log("Results changed. Redrawing UI and saving to live cache...");
+            localStorage.setItem('porra_live_results_cache', JSON.stringify(results));
             updateAppUI();
             return true;
         } else {
@@ -2063,6 +2145,9 @@ function approveProvisionalScores() {
     // Save officialResults to localStorage draft
     localStorage.setItem('porra_results_draft', JSON.stringify(officialResults));
     
+    // Clear the live scores cache since they are now official in the draft
+    localStorage.removeItem('porra_live_results_cache');
+    
     // Synchronize results to match officialResults
     results = JSON.parse(JSON.stringify(officialResults));
     
@@ -2089,7 +2174,7 @@ function downloadResultsJSON() {
 // --- 🔴 AUTOMATIC LIVE UPDATES & POLLING LOGIC ---
 let liveRefreshInterval = null;
 
-// Check if any match is currently playing (live window: [fecha - 15 min, fecha + 4 hours])
+// Check if any match is currently playing (live window: [fecha - 15 min, fecha + 4 hours] or World Cup period)
 function isAnyMatchLive() {
     if (!porraData || !porraData.matches) return false;
     
@@ -2101,6 +2186,14 @@ function isAnyMatchLive() {
     const now = Date.now();
     const SPAIN_OFFSET = '+02:00'; // Spain time offset (CEST during June/July)
     
+    // 1. Range check for World Cup 2026 period (June 10 to July 21, 2026)
+    const wcStart = new Date('2026-06-10T00:00:00+02:00').getTime();
+    const wcEnd = new Date('2026-07-21T23:59:59+02:00').getTime();
+    if (now >= wcStart && now <= wcEnd) {
+        return true;
+    }
+    
+    // 2. Fallback check for individual group stage matches active hours
     return porraData.matches.some(m => {
         const dateISO = m.fecha.trim().replace(/\s+/g, 'T').replace(/\//g, '-');
         const matchTime = new Date(dateISO + SPAIN_OFFSET).getTime();
@@ -2111,13 +2204,13 @@ function isAnyMatchLive() {
 }
 
 // Function to refresh results from football-data.org API or server results.json
-async function refreshResults() {
+async function refreshResults(forceAPI = false) {
     const refreshBtn = document.getElementById('live-refresh-btn');
     if (refreshBtn) refreshBtn.classList.add('spinning');
     
     try {
-        if (isAnyMatchLive()) {
-            console.log("Live matches active. Refreshing live results from API...");
+        if (forceAPI || isAnyMatchLive()) {
+            console.log("Refreshing live results from API...");
             await fetchAndProcessLiveResults();
         } else {
             console.log("No live matches active. Refreshing results.json from server...");
@@ -2128,12 +2221,31 @@ async function refreshResults() {
             const freshResults = await response.json();
             if (freshResults && freshResults.matches) {
                 // Compare the JSON representations to prevent DOM flicker if nothing has changed
-                if (JSON.stringify(freshResults) === JSON.stringify(results)) {
-                    console.log("results.json is identical. Skipping UI redraw.");
+                if (JSON.stringify(freshResults) === JSON.stringify(officialResults)) {
+                    console.log("results.json is identical on server. Skipping UI redraw.");
                     return;
                 }
                 
-                results = freshResults;
+                officialResults = freshResults;
+                
+                // Clean officialResults template if some keys are missing
+                if (!officialResults.matches) officialResults.matches = {};
+                if (!officialResults.group_standings) officialResults.group_standings = {};
+                if (!officialResults.r32_teams) officialResults.r32_teams = [];
+                if (!officialResults.r32_matches) officialResults.r32_matches = {};
+                if (!officialResults.r16_teams) officialResults.r16_teams = [];
+                if (!officialResults.r16_matches) officialResults.r16_matches = {};
+                if (!officialResults.r8_teams) officialResults.r8_teams = [];
+                if (!officialResults.r8_matches) officialResults.r8_matches = {};
+                if (!officialResults.r4_teams) officialResults.r4_teams = [];
+                if (!officialResults.r4_matches) officialResults.r4_matches = {};
+                if (!officialResults.r3_4_teams) officialResults.r3_4_teams = [];
+                if (!officialResults.final_teams) officialResults.final_teams = [];
+                if (!officialResults.r3_4_match) officialResults.r3_4_match = { matchup: '', score: '' };
+                if (!officialResults.final_match) officialResults.final_match = { matchup: '', score: '' };
+                
+                // Clone officialResults into results
+                results = JSON.parse(JSON.stringify(officialResults));
                 
                 // Repopulate provisionalMatches Set
                 provisionalMatches.clear();
@@ -2141,8 +2253,11 @@ async function refreshResults() {
                     results.provisionalMatches.forEach(id => provisionalMatches.add(String(id)));
                 }
                 
+                // Merge dynamic live scores cache
+                mergeLiveCache();
+                
                 updateAppUI();
-                console.log("results.json updated and UI redrawn.");
+                console.log("results.json updated, merged with live cache, and UI redrawn.");
             }
         }
     } catch (e) {
@@ -2184,7 +2299,7 @@ function setupLiveRefresh() {
     // Bind click event once if button exists and doesn't have it
     if (refreshBtn && !refreshBtn.dataset.listenerBound) {
         refreshBtn.addEventListener('click', () => {
-            refreshResults();
+            refreshResults(true); // Force API call on manual click!
         });
         refreshBtn.dataset.listenerBound = 'true';
     }
