@@ -63,12 +63,10 @@ const TEAM_TRANSLATIONS = {
     'panama': 'Panamá'
 };
 
-// football-data.org live match statuses
 const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED"]);
 
 function translateTeam(name) {
     if (!name) return "";
-    // Remove "FC", "AC", "Real" etc. if necessary, but football-data.org usually returns country names like "Germany", "Mexico" for international matches
     const clean = name.trim().toLowerCase();
     return TEAM_TRANSLATIONS[clean] || name;
 }
@@ -103,7 +101,8 @@ async function run() {
     if (!results.r3_4_match) results.r3_4_match = { matchup: '', score: '' };
     if (!results.final_match) results.final_match = { matchup: '', score: '' };
     
-    // Clear and initialize provisionalMatches array in results.json
+    // Maintain a list of previous provisional matches before clearing
+    const prevProvisionalMatches = Array.isArray(results.provisionalMatches) ? [...results.provisionalMatches] : [];
     results.provisionalMatches = [];
 
     const now = Date.now();
@@ -134,7 +133,7 @@ async function run() {
             return;
         }
 
-        console.log(`Retrieved ${matches.length} matches from the API. Processing live/recent matches...`);
+        console.log(`Retrieved ${matches.length} matches from the API. Processing...`);
 
         let updatedCount = 0;
 
@@ -182,11 +181,57 @@ async function run() {
             const isPlayedOrLive = (goalsHome !== null && goalsAway !== null);
             const scoreStr = isPlayedOrLive ? `${goalsHome}-${goalsAway}` : "";
 
-            // Check if the match is currently live OR has finished very recently (within last 4 hours)
+            // Check if the match has finished very recently (within last 4 hours)
             const isRecentFinished = isFinished && ((now - matchDate) <= 4 * 60 * 60 * 1000);
 
-            // We ONLY search and update results for matches that are currently live or recently finished
-            if (!isLive && !isRecentFinished) {
+            // Determine local match ID or key in results.json
+            let matchId = "";
+            let currentScore = "";
+
+            if (roundLower.includes('group')) {
+                const localMatch = porraData.matches.find(m => 
+                    (m.casa === home && m.fuera === away) || (m.casa === away && m.fuera === home)
+                );
+                if (localMatch) {
+                    matchId = String(localMatch.id);
+                    currentScore = results.matches[matchId] || "";
+                }
+            } else {
+                let stageMatches = null;
+                let keyPrefix = "";
+                if (roundLower.includes('32') || roundLower.includes('last_32')) { stageMatches = results.r32_matches; keyPrefix = "r32_matches"; }
+                else if (roundLower.includes('16') || roundLower.includes('last_16')) { stageMatches = results.r16_matches; keyPrefix = "r16_matches"; }
+                else if (roundLower.includes('quarter')) { stageMatches = results.r8_matches; keyPrefix = "r8_matches"; }
+                else if (roundLower.includes('semi')) { stageMatches = results.r4_matches; keyPrefix = "r4_matches"; }
+                else if (roundLower.includes('third') || roundLower.includes('bronze') || roundLower.includes('3')) { stageMatches = { "r3_4_match": results.r3_4_match }; keyPrefix = "single"; }
+                else if (roundLower.includes('final')) { stageMatches = { "final_match": results.final_match }; keyPrefix = "single"; }
+
+                if (stageMatches) {
+                    for (const [key, matchObj] of Object.entries(stageMatches)) {
+                        if (matchObj && matchObj.matchup) {
+                            const teams = matchObj.matchup.split('-').map(t => t.trim());
+                            if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
+                                matchId = (keyPrefix === "single") ? `single:${key}` : `${keyPrefix}:${key}`;
+                                currentScore = matchObj.score || "";
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!matchId) return; // Skip if we can't map this match
+
+            const wasProvisional = prevProvisionalMatches.includes(matchId);
+
+            // We update the score if:
+            // 1. We don't have a score loaded yet (currentScore is empty)
+            // 2. OR the match is currently live
+            // 3. OR the match was marked as provisional (so we need to capture the final score if it transitioned to finished)
+            // 4. OR the match finished recently (to allow corrections)
+            const shouldProcess = (currentScore.trim() === "") || isLive || wasProvisional || isRecentFinished;
+
+            if (!shouldProcess) {
                 return;
             }
 
@@ -194,25 +239,15 @@ async function run() {
             const awayWon = item.score && item.score.winner === 'AWAY_TEAM';
 
             if (roundLower.includes('group')) {
-                // Find corresponding match in porraData.matches
-                const localMatch = porraData.matches.find(m => 
-                    (m.casa === home && m.fuera === away) || (m.casa === away && m.fuera === home)
-                );
+                if (currentScore !== scoreStr && scoreStr !== "") {
+                    results.matches[matchId] = scoreStr;
+                    console.log(`Updated Match ${matchId} (${home} ${scoreStr} ${away}) [Status: ${status}]`);
+                    updatedCount++;
+                }
 
-                if (localMatch) {
-                    const matchId = String(localMatch.id);
-                    const currentScore = results.matches[matchId] || "";
-
-                    if (currentScore !== scoreStr && scoreStr !== "") {
-                        results.matches[matchId] = scoreStr;
-                        console.log(`Updated Match ${matchId} (${home} ${scoreStr} ${away}) [Status: ${status}]`);
-                        updatedCount++;
-                    }
-
-                    // Track as provisional if currently in progress
-                    if (isLive) {
-                        results.provisionalMatches.push(matchId);
-                    }
+                // Track as provisional if currently in progress
+                if (isLive) {
+                    results.provisionalMatches.push(matchId);
                 }
             } else {
                 // K.O. stages
@@ -224,13 +259,7 @@ async function run() {
                     addQualified(results.r32_teams, away);
                     if (isPlayedOrLive) {
                         isStageMatchUpdated = updateKOStageMatches(results.r32_matches, home, away, scoreStr);
-                        for (const [key, matchObj] of Object.entries(results.r32_matches)) {
-                            const teams = (matchObj.matchup || "").split('-').map(t => t.trim());
-                            if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
-                                koKey = `r32_matches:${key}`;
-                                break;
-                            }
-                        }
+                        koKey = matchId;
                         // Propagate winner
                         if (homeWon) addQualified(results.r16_teams, home);
                         if (awayWon) addQualified(results.r16_teams, away);
@@ -240,13 +269,7 @@ async function run() {
                     addQualified(results.r16_teams, away);
                     if (isPlayedOrLive) {
                         isStageMatchUpdated = updateKOStageMatches(results.r16_matches, home, away, scoreStr);
-                        for (const [key, matchObj] of Object.entries(results.r16_matches)) {
-                            const teams = (matchObj.matchup || "").split('-').map(t => t.trim());
-                            if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
-                                koKey = `r16_matches:${key}`;
-                                break;
-                            }
-                        }
+                        koKey = matchId;
                         if (homeWon) addQualified(results.r8_teams, home);
                         if (awayWon) addQualified(results.r8_teams, away);
                     }
@@ -255,13 +278,7 @@ async function run() {
                     addQualified(results.r8_teams, away);
                     if (isPlayedOrLive) {
                         isStageMatchUpdated = updateKOStageMatches(results.r8_matches, home, away, scoreStr);
-                        for (const [key, matchObj] of Object.entries(results.r8_matches)) {
-                            const teams = (matchObj.matchup || "").split('-').map(t => t.trim());
-                            if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
-                                koKey = `r8_matches:${key}`;
-                                break;
-                            }
-                        }
+                        koKey = matchId;
                         if (homeWon) addQualified(results.r4_teams, home);
                         if (awayWon) addQualified(results.r4_teams, away);
                     }
@@ -270,13 +287,7 @@ async function run() {
                     addQualified(results.r4_teams, away);
                     if (isPlayedOrLive) {
                         isStageMatchUpdated = updateKOStageMatches(results.r4_matches, home, away, scoreStr);
-                        for (const [key, matchObj] of Object.entries(results.r4_matches)) {
-                            const teams = (matchObj.matchup || "").split('-').map(t => t.trim());
-                            if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
-                                koKey = `r4_matches:${key}`;
-                                break;
-                            }
-                        }
+                        koKey = matchId;
                         if (homeWon) {
                             addQualified(results.final_teams, home);
                             addQualified(results.r3_4_teams, away);
@@ -297,7 +308,7 @@ async function run() {
                                 results.r3_4_match.score = scoreStr;
                                 isStageMatchUpdated = true;
                             }
-                            koKey = "single:r3_4_match";
+                            koKey = matchId;
                         }
                         // Assign 3rd and 4th place
                         if (isFinished) {
@@ -321,7 +332,7 @@ async function run() {
                                 results.final_match.score = scoreStr;
                                 isStageMatchUpdated = true;
                             }
-                            koKey = "single:final_match";
+                            koKey = matchId;
                         }
                         // Assign Champion and Runner-up
                         if (isFinished) {

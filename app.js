@@ -508,6 +508,15 @@ function renderStandings(standings) {
 // Render matches calendar grid
 function renderMatches() {
     const grid = document.getElementById('matches-grid');
+    
+    // Save currently expanded match IDs to preserve state on redraw
+    const expandedMatchIds = new Set();
+    grid.querySelectorAll('.match-card.expanded').forEach(card => {
+        if (card.dataset.matchId) {
+            expandedMatchIds.add(String(card.dataset.matchId));
+        }
+    });
+
     grid.innerHTML = '';
 
     const filteredMatches = porraData.matches.filter(m => {
@@ -564,12 +573,18 @@ function renderMatches() {
         
         const card = document.createElement('div');
         card.classList.add('match-card');
+        card.dataset.matchId = m.id;
         
         const isLive = provisionalMatches.has(String(m.id));
         if (isLive) {
             card.classList.add('live-match-highlight');
         } else if (m.id === nextMatchId) {
             card.classList.add('next-match-highlight');
+        }
+        
+        // Restore expanded state if it was expanded before refresh
+        if (expandedMatchIds.has(String(m.id))) {
+            card.classList.add('expanded');
         }
         
         // Split actual score if it exists
@@ -792,6 +807,16 @@ function setupEventListeners() {
     const approveProvisionalBtn = document.getElementById('approve-provisional-btn');
     if (approveProvisionalBtn) {
         approveProvisionalBtn.addEventListener('click', approveProvisionalScores);
+    }
+
+    const clearDraftBtn = document.getElementById('clear-draft-btn');
+    if (clearDraftBtn) {
+        clearDraftBtn.addEventListener('click', () => {
+            if (confirm("¿Seguro que quieres borrar el borrador local? Se volverán a cargar los datos oficiales del servidor (results.json).")) {
+                localStorage.removeItem('porra_results_draft');
+                location.reload();
+            }
+        });
     }
 }
 
@@ -1711,6 +1736,12 @@ async function refreshResults() {
         
         const freshResults = await response.json();
         if (freshResults && freshResults.matches) {
+            // Compare the JSON representations to prevent DOM flicker if nothing has changed
+            if (JSON.stringify(freshResults) === JSON.stringify(results)) {
+                console.log("results.json is identical. Skipping UI redraw.");
+                return;
+            }
+            
             results = freshResults;
             
             // Repopulate provisionalMatches Set
@@ -1720,7 +1751,7 @@ async function refreshResults() {
             }
             
             updateAppUI();
-            console.log("results.json updated successfully.");
+            console.log("results.json updated and UI redrawn.");
         }
     } catch (e) {
         console.error("Error refreshing results:", e);
