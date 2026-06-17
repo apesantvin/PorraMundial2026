@@ -1,9 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 
-// Timezone offset for Spain (CEST is UTC+2 during June/July)
-const SPAIN_OFFSET = '+02:00';
-
 const TEAM_TRANSLATIONS = {
     'mexico': 'México',
     'south africa': 'Sudáfrica',
@@ -66,16 +63,18 @@ const TEAM_TRANSLATIONS = {
     'panama': 'Panamá'
 };
 
-const LIVE_STATUSES = new Set(["1H", "2H", "HT", "ET", "BT", "P"]);
+// football-data.org live match statuses
+const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED"]);
 
 function translateTeam(name) {
     if (!name) return "";
+    // Remove "FC", "AC", "Real" etc. if necessary, but football-data.org usually returns country names like "Germany", "Mexico" for international matches
     const clean = name.trim().toLowerCase();
     return TEAM_TRANSLATIONS[clean] || name;
 }
 
 async function run() {
-    console.log("Starting results update script...");
+    console.log("Starting live results update script (football-data.org)...");
 
     // 1. Load configuration and current results files
     const porraDataPath = path.join(process.cwd(), 'porra_data.json');
@@ -107,38 +106,20 @@ async function run() {
     // Clear and initialize provisionalMatches array in results.json
     results.provisionalMatches = [];
 
-    const forceRun = process.argv.includes('--force');
     const now = Date.now();
 
-    // 2. Check if a match is currently active (live window: [fecha - 15 min, fecha + 3 hours])
-    let activeMatchFound = false;
-    for (const match of porraData.matches) {
-        const matchTime = new Date(match.fecha.replace(' ', 'T') + SPAIN_OFFSET).getTime();
-        // 15 minutes before kick-off to 3 hours after
-        if (now >= (matchTime - 15 * 60 * 1000) && now <= (matchTime + 3 * 60 * 60 * 1000)) {
-            activeMatchFound = true;
-            console.log(`Active match window found: Match ${match.id} (${match.casa} vs ${match.fuera}) starts at ${match.fecha}`);
-            break;
-        }
-    }
-
-    if (!activeMatchFound && !forceRun) {
-        console.log("No active matches scheduled at this time. Skipping external API call to save quota.");
-        return;
-    }
-
-    // 3. Fetch data from API-Football
+    // 2. Fetch data from football-data.org
     const apiKey = process.env.TOKENAPIMUNDIAL2026;
     if (!apiKey) {
         console.error("TOKENAPIMUNDIAL2026 environment variable is not defined.");
         process.exit(1);
     }
 
-    console.log("Fetching World Cup 2026 matches from API-Football...");
+    console.log("Fetching World Cup matches from football-data.org...");
     try {
-        const response = await fetch('https://v3.football.api-sports.io/fixtures?league=1&season=2026', {
+        const response = await fetch('https://api.football-data.org/v4/competitions/WC/matches', {
             headers: {
-                'x-apisports-key': apiKey
+                'X-Auth-Token': apiKey
             }
         });
 
@@ -147,18 +128,13 @@ async function run() {
         }
 
         const resData = await response.json();
-        if (resData.errors && Object.keys(resData.errors).length > 0) {
-            console.error("API returned errors:", resData.errors);
-            process.exit(1);
-        }
-
-        const fixtures = resData.response;
-        if (!fixtures || fixtures.length === 0) {
-            console.log("No fixtures returned by the API.");
+        const matches = resData.matches;
+        if (!matches || matches.length === 0) {
+            console.log("No matches returned by the API.");
             return;
         }
 
-        console.log(`Retrieved ${fixtures.length} fixtures from the API. Processing...`);
+        console.log(`Retrieved ${matches.length} matches from the API. Processing live/recent matches...`);
 
         let updatedCount = 0;
 
@@ -190,23 +166,34 @@ async function run() {
             return updated;
         }
 
-        fixtures.forEach(item => {
-            const home = translateTeam(item.teams.home.name);
-            const away = translateTeam(item.teams.away.name);
-            const goalsHome = item.goals.home;
-            const goalsAway = item.goals.away;
-            const status = item.fixture.status.short;
-            const round = item.league.round;
-            const matchDate = new Date(item.fixture.date).getTime();
+        matches.forEach(item => {
+            const home = translateTeam(item.homeTeam.shortName || item.homeTeam.name);
+            const away = translateTeam(item.awayTeam.shortName || item.awayTeam.name);
+            
+            const goalsHome = item.score && item.score.fullTime ? item.score.fullTime.home : null;
+            const goalsAway = item.score && item.score.fullTime ? item.score.fullTime.away : null;
+            
+            const status = item.status;
+            const roundLower = (item.stage || "").toLowerCase();
+            const matchDate = new Date(item.utcDate).getTime();
 
-            // We only collect score if match has goals recorded (i.e. is live or finished)
+            const isLive = LIVE_STATUSES.has(status);
+            const isFinished = (status === 'FINISHED');
             const isPlayedOrLive = (goalsHome !== null && goalsAway !== null);
             const scoreStr = isPlayedOrLive ? `${goalsHome}-${goalsAway}` : "";
 
-            // Check if the match is in the active update window (within last 4 hours) or has no score in results.json yet
-            const isRecent = (now - matchDate) <= 4 * 60 * 60 * 1000;
+            // Check if the match is currently live OR has finished very recently (within last 4 hours)
+            const isRecentFinished = isFinished && ((now - matchDate) <= 4 * 60 * 60 * 1000);
 
-            if (round.includes('Group Stage')) {
+            // We ONLY search and update results for matches that are currently live or recently finished
+            if (!isLive && !isRecentFinished) {
+                return;
+            }
+
+            const homeWon = item.score && item.score.winner === 'HOME_TEAM';
+            const awayWon = item.score && item.score.winner === 'AWAY_TEAM';
+
+            if (roundLower.includes('group')) {
                 // Find corresponding match in porraData.matches
                 const localMatch = porraData.matches.find(m => 
                     (m.casa === home && m.fuera === away) || (m.casa === away && m.fuera === home)
@@ -216,15 +203,14 @@ async function run() {
                     const matchId = String(localMatch.id);
                     const currentScore = results.matches[matchId] || "";
 
-                    // Overwrite if it's empty, OR if it's active/recent and the score changed
-                    if (currentScore === "" || (isRecent && currentScore !== scoreStr && scoreStr !== "")) {
+                    if (currentScore !== scoreStr && scoreStr !== "") {
                         results.matches[matchId] = scoreStr;
                         console.log(`Updated Match ${matchId} (${home} ${scoreStr} ${away}) [Status: ${status}]`);
                         updatedCount++;
                     }
 
                     // Track as provisional if currently in progress
-                    if (LIVE_STATUSES.has(status)) {
+                    if (isLive) {
                         results.provisionalMatches.push(matchId);
                     }
                 }
@@ -233,12 +219,11 @@ async function run() {
                 let isStageMatchUpdated = false;
                 let koKey = "";
 
-                if (round.includes('Round of 32')) {
+                if (roundLower.includes('32') || roundLower.includes('last_32')) {
                     addQualified(results.r32_teams, home);
                     addQualified(results.r32_teams, away);
                     if (isPlayedOrLive) {
                         isStageMatchUpdated = updateKOStageMatches(results.r32_matches, home, away, scoreStr);
-                        // Find the match key for provisional tracking
                         for (const [key, matchObj] of Object.entries(results.r32_matches)) {
                             const teams = (matchObj.matchup || "").split('-').map(t => t.trim());
                             if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
@@ -246,11 +231,11 @@ async function run() {
                                 break;
                             }
                         }
-                        // Propagate winner to Round of 16
-                        if (item.teams.home.winner) addQualified(results.r16_teams, home);
-                        if (item.teams.away.winner) addQualified(results.r16_teams, away);
+                        // Propagate winner
+                        if (homeWon) addQualified(results.r16_teams, home);
+                        if (awayWon) addQualified(results.r16_teams, away);
                     }
-                } else if (round.includes('Round of 16')) {
+                } else if (roundLower.includes('16') || roundLower.includes('last_16')) {
                     addQualified(results.r16_teams, home);
                     addQualified(results.r16_teams, away);
                     if (isPlayedOrLive) {
@@ -262,11 +247,10 @@ async function run() {
                                 break;
                             }
                         }
-                        // Propagate winner to Quarter-finals
-                        if (item.teams.home.winner) addQualified(results.r8_teams, home);
-                        if (item.teams.away.winner) addQualified(results.r8_teams, away);
+                        if (homeWon) addQualified(results.r8_teams, home);
+                        if (awayWon) addQualified(results.r8_teams, away);
                     }
-                } else if (round.includes('Quarter-finals')) {
+                } else if (roundLower.includes('quarter')) {
                     addQualified(results.r8_teams, home);
                     addQualified(results.r8_teams, away);
                     if (isPlayedOrLive) {
@@ -278,11 +262,10 @@ async function run() {
                                 break;
                             }
                         }
-                        // Propagate winner to Semi-finals
-                        if (item.teams.home.winner) addQualified(results.r4_teams, home);
-                        if (item.teams.away.winner) addQualified(results.r4_teams, away);
+                        if (homeWon) addQualified(results.r4_teams, home);
+                        if (awayWon) addQualified(results.r4_teams, away);
                     }
-                } else if (round.includes('Semi-finals')) {
+                } else if (roundLower.includes('semi')) {
                     addQualified(results.r4_teams, home);
                     addQualified(results.r4_teams, away);
                     if (isPlayedOrLive) {
@@ -294,17 +277,16 @@ async function run() {
                                 break;
                             }
                         }
-                        // Propagate winner to Final, loser to 3rd place match
-                        if (item.teams.home.winner) {
+                        if (homeWon) {
                             addQualified(results.final_teams, home);
                             addQualified(results.r3_4_teams, away);
                         }
-                        if (item.teams.away.winner) {
+                        if (awayWon) {
                             addQualified(results.final_teams, away);
                             addQualified(results.r3_4_teams, home);
                         }
                     }
-                } else if (round.includes('Match for 3rd Place')) {
+                } else if (roundLower.includes('third') || roundLower.includes('bronze') || roundLower.includes('3')) {
                     addQualified(results.r3_4_teams, home);
                     addQualified(results.r3_4_teams, away);
                     if (isPlayedOrLive) {
@@ -318,18 +300,17 @@ async function run() {
                             koKey = "single:r3_4_match";
                         }
                         // Assign 3rd and 4th place
-                        const isFinished = (status === 'FT' || status === 'AET' || status === 'PEN');
                         if (isFinished) {
-                            if (item.teams.home.winner) {
+                            if (homeWon) {
                                 results.honor_3rd = home;
                                 results.honor_4th = away;
-                            } else if (item.teams.away.winner) {
+                            } else if (awayWon) {
                                 results.honor_3rd = away;
                                 results.honor_4th = home;
                             }
                         }
                     }
-                } else if (round.includes('Final')) {
+                } else if (roundLower.includes('final')) {
                     addQualified(results.final_teams, home);
                     addQualified(results.final_teams, away);
                     if (isPlayedOrLive) {
@@ -343,12 +324,11 @@ async function run() {
                             koKey = "single:final_match";
                         }
                         // Assign Champion and Runner-up
-                        const isFinished = (status === 'FT' || status === 'AET' || status === 'PEN');
                         if (isFinished) {
-                            if (item.teams.home.winner) {
+                            if (homeWon) {
                                   results.honor_champ = home;
                                   results.honor_runner = away;
-                            } else if (item.teams.away.winner) {
+                            } else if (awayWon) {
                                   results.honor_champ = away;
                                   results.honor_runner = home;
                             }
@@ -357,19 +337,18 @@ async function run() {
                 }
 
                 if (isStageMatchUpdated) {
-                    console.log(`Updated K.O. Match [${round}]: ${home} ${scoreStr} ${away} [Status: ${status}]`);
+                    console.log(`Updated K.O. Match [${item.stage}]: ${home} ${scoreStr} ${away} [Status: ${status}]`);
                     updatedCount++;
                 }
 
                 // Track K.O. match as provisional if currently in progress
-                if (koKey && LIVE_STATUSES.has(status)) {
+                if (koKey && isLive) {
                     results.provisionalMatches.push(koKey);
                 }
             }
         });
 
-        // 4. Save results back to results.json (if changes were detected OR if provisional list changed)
-        // Since we clear results.provisionalMatches, we always overwrite to keep them accurate
+        // 4. Save results back to results.json
         fs.writeFileSync(resultsPath, JSON.stringify(results, null, 2), 'utf8');
         console.log(`Saved results.json with updates. ${updatedCount} match scores changed. ${results.provisionalMatches.length} matches currently live/provisional.`);
 

@@ -1677,11 +1677,19 @@ let liveRefreshInterval = null;
 // Check if any match is currently playing (live window: [fecha - 15 min, fecha + 3 hours])
 function isAnyMatchLive() {
     if (!porraData || !porraData.matches) return false;
+    
+    // Check if there are any matches currently marked as provisional in results.json
+    if (results && results.provisionalMatches && results.provisionalMatches.length > 0) {
+        return true;
+    }
+    
     const now = Date.now();
     const SPAIN_OFFSET = '+02:00'; // Spain time offset (CEST during June/July)
     
     return porraData.matches.some(m => {
-        const matchTime = new Date(m.fecha.replace(' ', 'T') + SPAIN_OFFSET).getTime();
+        const dateISO = m.fecha.trim().replace(/\s+/g, 'T').replace(/\//g, '-');
+        const matchTime = new Date(dateISO + SPAIN_OFFSET).getTime();
+        if (isNaN(matchTime)) return false;
         // 15 minutes before to 3 hours after
         return now >= (matchTime - 15 * 60 * 1000) && now <= (matchTime + 3 * 60 * 60 * 1000);
     });
