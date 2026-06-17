@@ -28,20 +28,25 @@
                     </button>
                 </div>
             </div>
-            <nav class="app-nav">
-                <button class="nav-btn active" data-tab="clasificacion">
-                    <i class="fa-solid fa-ranking-star"></i> Clasificación
-                </button>
-                <button class="nav-btn" data-tab="partidos">
-                    <i class="fa-solid fa-circle-play"></i> Partidos
-                </button>
-                <button class="nav-btn" data-tab="reglas">
-                    <i class="fa-solid fa-book-open"></i> Reglas de Puntuación
-                </button>
-                <button class="nav-btn" data-tab="admin">
-                    <i class="fa-solid fa-sliders"></i> Admin
-                </button>
-            </nav>
+            <div class="nav-container-wrapper">
+                <nav class="app-nav">
+                    <button class="nav-btn active" data-tab="clasificacion">
+                        <i class="fa-solid fa-ranking-star"></i> Clasificación
+                    </button>
+                    <button class="nav-btn" data-tab="partidos">
+                        <i class="fa-solid fa-circle-play"></i> Partidos
+                    </button>
+                    <button class="nav-btn" data-tab="eliminatorias">
+                        <i class="fa-solid fa-sitemap"></i> Fase K.O.
+                    </button>
+                    <button class="nav-btn" data-tab="reglas">
+                        <i class="fa-solid fa-book-open"></i> Reglas de Puntuación
+                    </button>
+                    <button class="nav-btn" data-tab="admin">
+                        <i class="fa-solid fa-sliders"></i> Admin
+                    </button>
+                </nav>
+            </div>
         </div>
     </header>
 
@@ -96,6 +101,24 @@
             </div>
 
             <div class="matches-grid" id="matches-grid">
+                <!-- Populated dynamically via JS -->
+            </div>
+        </section>
+
+        <!-- 🏆 ELIMINATORIAS TAB -->
+        <section id="eliminatorias" class="tab-content">
+            <div class="filter-bar">
+                <div class="filters" id="ko-filters">
+                    <button class="filter-btn ko-filter-btn active" data-kofilter="all">Todos</button>
+                    <button class="filter-btn ko-filter-btn" data-kofilter="r32">Dieciseisavos</button>
+                    <button class="filter-btn ko-filter-btn" data-kofilter="r16">Octavos</button>
+                    <button class="filter-btn ko-filter-btn" data-kofilter="r8">Cuartos</button>
+                    <button class="filter-btn ko-filter-btn" data-kofilter="r4">Semifinales</button>
+                    <button class="filter-btn ko-filter-btn" data-kofilter="finales">Finales</button>
+                </div>
+            </div>
+
+            <div class="matches-grid" id="ko-matches-grid">
                 <!-- Populated dynamically via JS -->
             </div>
         </section>

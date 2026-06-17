@@ -5,6 +5,7 @@ let officialResults = null;
 const provisionalMatches = new Set(); // Track matches loaded dynamically from the API
 let activeTab = 'clasificacion';
 let currentFilter = 'all';
+let currentKOFilter = 'all';
 let evolutionChart = null;
 
 // Initial load
@@ -19,6 +20,15 @@ async function initApp() {
         // Load static porra configuration
         const dataResponse = await fetch('porra_data.json');
         porraData = await dataResponse.json();
+        
+        // Clean up spreadsheet artifact group labels (e.g. "Pos", 1, 2, 3, 4) in-place
+        let currentGroup = "";
+        porraData.matches.forEach(m => {
+            if (m.grupo && typeof m.grupo === 'string' && m.grupo.startsWith("Grupo ")) {
+                currentGroup = m.grupo;
+            }
+            m.grupo = currentGroup;
+        });
         
         // Load officialResults draft from localStorage if it exists, otherwise fetch results.json
         const draft = localStorage.getItem('porra_results_draft');
@@ -95,6 +105,9 @@ function updateAppUI() {
 
     // 5. Render Points Evolution Chart
     renderEvolutionChart();
+
+    // 6. Render K.O. Rounds
+    renderKORounds();
 }
 
 // Calculate the detailed points and ranking for all players
@@ -717,6 +730,177 @@ function renderMatches() {
     });
 }
 
+// Render K.O. rounds matchups and scores
+function renderKORounds() {
+    const grid = document.getElementById('ko-matches-grid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+
+    const rounds = [
+        {
+            key: 'r32',
+            name: 'Dieciseisavos de Final',
+            desc: '32 Equipos - Eliminatoria a partido único ⚔️',
+            matches: (results && results.r32_matches) || {},
+            prefix: 'r32_matches'
+        },
+        {
+            key: 'r16',
+            name: 'Octavos de Final',
+            desc: '16 Equipos - Camino a la gloria 🏆',
+            matches: (results && results.r16_matches) || {},
+            prefix: 'r16_matches'
+        },
+        {
+            key: 'r8',
+            name: 'Cuartos de Final',
+            desc: '8 Equipos - La tensión aumenta 🔥',
+            matches: (results && results.r8_matches) || {},
+            prefix: 'r8_matches'
+        },
+        {
+            key: 'r4',
+            name: 'Semifinales',
+            desc: '4 Equipos - A un paso de la Final 🌟',
+            matches: (results && results.r4_matches) || {},
+            prefix: 'r4_matches'
+        },
+        {
+            key: 'finales',
+            name: 'Finales y Tercer Puesto',
+            desc: 'Los encuentros definitivos por la copa 🏆',
+            matches: {
+                'r3_4_match': (results && results.r3_4_match) || { matchup: '', score: '' },
+                'final_match': (results && results.final_match) || { matchup: '', score: '' }
+            },
+            prefix: 'single'
+        }
+    ];
+
+    const filteredRounds = rounds.filter(r => {
+        if (currentKOFilter === 'all') return true;
+        return r.key === currentKOFilter;
+    });
+
+    filteredRounds.forEach(r => {
+        const matchesCount = Object.keys(r.matches).length;
+        if (matchesCount === 0) return;
+
+        // Round divider
+        const divider = document.createElement('div');
+        divider.classList.add('round-divider-card');
+        divider.innerHTML = `
+            <h3><i class="fa-solid fa-sitemap"></i> ${r.name}</h3>
+            <span class="round-info">${r.desc}</span>
+        `;
+        grid.appendChild(divider);
+
+        Object.entries(r.matches).forEach(([matchKey, matchObj]) => {
+            const matchup = matchObj.matchup || '';
+            const score = matchObj.score || '';
+            const isPlayed = score.trim() !== "";
+
+            let t1 = "Por determinar";
+            let t2 = "Por determinar";
+            if (matchup.includes('-')) {
+                const parts = matchup.split('-');
+                t1 = parts[0].trim() || "Por determinar";
+                t2 = parts[1].trim() || "Por determinar";
+            } else if (matchup.trim() !== "") {
+                t1 = matchup.trim();
+            }
+
+            const lookupId = (r.prefix === 'single') ? `single:${matchKey}` : `${r.prefix}:${matchKey}`;
+            const isLive = provisionalMatches.has(String(lookupId));
+
+            const card = document.createElement('div');
+            card.classList.add('match-card');
+            card.style.cursor = 'default';
+            card.style.pointerEvents = 'none'; // Disables click event so K.O. cards do not try to expand
+            
+            if (isLive) {
+                card.classList.add('live-match-highlight');
+            }
+
+            let homeScore = '';
+            let awayScore = '';
+            if (isPlayed) {
+                const parts = score.split('-');
+                homeScore = parts[0] || '';
+                awayScore = parts[1] || '';
+            }
+
+            const flagHome = getFlagHtml(t1, true);
+            const flagAway = getFlagHtml(t2, true);
+
+            let slotLabel = "";
+            if (r.key === 'r32') {
+                slotLabel = `Cruce ${matchKey}`;
+            } else if (r.key === 'r16') {
+                slotLabel = `Octavos (${matchKey})`;
+            } else if (r.key === 'r8') {
+                slotLabel = `Cuartos (${matchKey})`;
+            } else if (r.key === 'r4') {
+                slotLabel = `Semifinal (${matchKey})`;
+            } else if (matchKey === 'r3_4_match') {
+                slotLabel = `Tercer y Cuarto Puesto`;
+            } else if (matchKey === 'final_match') {
+                slotLabel = `Gran Final`;
+            }
+
+            const cardHeader = `
+                <div class="match-header">
+                    <span style="font-weight: 600; color: var(--color-primary-hover);">${slotLabel}</span>
+                    <span>${r.name}</span>
+                </div>
+            `;
+
+            const scoreContent = `
+                <div class="score-display">
+                    <span class="score-number">${isPlayed ? homeScore : '-'}</span>
+                    <span class="score-hyphen">-</span>
+                    <span class="score-number">${isPlayed ? awayScore : '-'}</span>
+                </div>
+            `;
+
+            const cardBody = `
+                <div class="match-body">
+                    <div class="team-display">
+                        ${flagHome}
+                        <span class="team-name" title="${t1}">${t1}</span>
+                    </div>
+                    ${scoreContent}
+                    <div class="team-display">
+                        ${flagAway}
+                        <span class="team-name" title="${t2}">${t2}</span>
+                    </div>
+                </div>
+            `;
+
+            let statusLabel = '';
+            if (isPlayed) {
+                if (isLive) {
+                    statusLabel = `<span class="provisional-match-label"><i class="fa-solid fa-arrows-rotate"></i> Provisional (API)</span>`;
+                } else {
+                    statusLabel = `<span class="played-match-label"><i class="fa-solid fa-circle-check"></i> Finalizado</span>`;
+                }
+            } else {
+                statusLabel = `<span class="pending-match-label"><i class="fa-solid fa-clock"></i> Pendiente</span>`;
+            }
+
+            const cardFooter = `
+                <div class="match-footer" style="margin-bottom:0.4rem;">
+                    ${statusLabel}
+                </div>
+            `;
+
+            card.innerHTML = cardHeader + cardBody + cardFooter;
+            grid.appendChild(card);
+        });
+    });
+}
+
 // Expand/Collapse match card prediction details drawer (along with all cards in the same row)
 function toggleMatchCard(cardElement) {
     const isExpanded = cardElement.classList.contains('expanded');
@@ -739,10 +923,18 @@ function toggleMatchCard(cardElement) {
 }
 
 // Scroll page to next upcoming match
+// Scroll page to the live match (highest priority) or the next upcoming match
 function scrollToNextMatch() {
-    const nextMatchEl = document.querySelector('.match-card.next-match-highlight');
-    if (nextMatchEl) {
-        nextMatchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Try to find a match currently in progress
+    let targetMatchEl = document.querySelector('.match-card.live-match-highlight');
+    
+    // Fall back to the next upcoming match if none is live
+    if (!targetMatchEl) {
+        targetMatchEl = document.querySelector('.match-card.next-match-highlight');
+    }
+    
+    if (targetMatchEl) {
+        targetMatchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 }
 
@@ -775,6 +967,16 @@ function setupEventListeners() {
             e.currentTarget.classList.add('active');
             currentFilter = e.currentTarget.getAttribute('data-filter');
             renderMatches();
+        });
+    });
+
+    // Filters for K.O. matches
+    document.querySelectorAll('.ko-filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.ko-filter-btn').forEach(b => b.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+            currentKOFilter = e.currentTarget.getAttribute('data-kofilter');
+            renderKORounds();
         });
     });
 
@@ -1207,7 +1409,13 @@ function getFlagHtml(countryName, isLarge = false) {
     };
 
     const code = isoCodes[countryName.trim()];
-    if (!code) return "";
+    if (!code) {
+        if (isLarge) {
+            return `<div class="team-flag-img placeholder-flag" title="${countryName}"><i class="fa-solid fa-circle-question"></i></div>`;
+        } else {
+            return `<span class="flag-img placeholder-flag" title="${countryName}"><i class="fa-solid fa-circle-question"></i></span>`;
+        }
+    }
 
     if (isLarge) {
         return `<img src="https://flagcdn.com/48x36/${code}.png" alt="${countryName}" class="team-flag-img">`;
