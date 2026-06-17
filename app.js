@@ -565,7 +565,10 @@ function renderMatches() {
         const card = document.createElement('div');
         card.classList.add('match-card');
         
-        if (m.id === nextMatchId) {
+        const isLive = provisionalMatches.has(String(m.id));
+        if (isLive) {
+            card.classList.add('live-match-highlight');
+        } else if (m.id === nextMatchId) {
             card.classList.add('next-match-highlight');
         }
         
@@ -1739,10 +1742,10 @@ function setupLiveRefresh() {
     if (isAnyMatchLive()) {
         if (liveIndicator) liveIndicator.style.display = 'inline-flex';
         
-        // Setup automatic polling every 2 minutes
+        // Setup automatic polling every 30 seconds
         if (!liveRefreshInterval) {
-            console.log("Live matches detected. Enabling auto-refresh every 2 minutes.");
-            liveRefreshInterval = setInterval(refreshResults, 2 * 60 * 1000);
+            console.log("Live matches detected. Enabling auto-refresh every 30 seconds.");
+            liveRefreshInterval = setInterval(refreshResults, 30 * 1000);
         }
     } else {
         if (liveIndicator) liveIndicator.style.display = 'none';

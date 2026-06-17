@@ -2,7 +2,7 @@ name: Actualizar Resultados Mundial en Vivo
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -20,24 +20,40 @@ jobs:
         with:
           node-version: 20
 
-      - name: Run update script
+      - name: Run update script and push changes every 1 minute
         env:
           TOKENAPIMUNDIAL2026: ${{ secrets.TOKENAPIMUNDIAL2026 }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            node .github/scripts/update_results.js --force
-          else
-            node .github/scripts/update_results.js
-          fi
-
-      - name: Commit and push if results changed
-        run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git add results.json
-          if git diff --cached --quiet; then
-            echo "No changes in results.json"
-          else
-            git commit -m "Auto-update live results from API-Football [skip ci]"
-            git push
+          
+          # If triggered manually, run once immediately and force updates
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Forcing manual update..."
+            node .github/scripts/update_results.js --force
+            git add results.json
+            if ! git diff --cached --quiet; then
+              git pull --rebase
+              git commit -m "Manual update live results [skip ci]"
+              git push
+            fi
+            exit 0
           fi
+          
+          # Otherwise, run loop 5 times (totaling 5 minutes of execution, checking every 60s)
+          for i in {1..5}
+          do
+            echo "Iteration $i starting..."
+            node .github/scripts/update_results.js
+            git add results.json
+            if ! git diff --cached --quiet; then
+              echo "Changes detected. Pulling and committing..."
+              git pull --rebase
+              git commit -m "Auto-update live results from football-data [skip ci]"
+              git push
+            fi
+            if [ $i -lt 5 ]; then
+              echo "Sleeping 60 seconds..."
+              sleep 60
+            fi
+          done
