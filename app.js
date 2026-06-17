@@ -1,0 +1,1612 @@
+// State variables
+let porraData = null;
+let results = null;
+let officialResults = null; // Copy of official results (excluding provisional scores)
+const provisionalMatches = new Set(); // Track matches loaded dynamically from the API
+let editMode = false;
+let activeTab = 'clasificacion';
+let currentFilter = 'all';
+let evolutionChart = null;
+
+// Initial load
+document.addEventListener('DOMContentLoaded', async () => {
+    await initApp();
+    setupEventListeners();
+});
+
+// Initialize application data
+async function initApp() {
+    try {
+        // Load static porra configuration
+        const dataResponse = await fetch('porra_data.json');
+        porraData = await dataResponse.json();
+        
+        // Load results. Prioritize localStorage (draft) then server results.json
+        const localResults = localStorage.getItem('porra_results_draft');
+        if (localResults) {
+            results = JSON.parse(localResults);
+            console.log("Loaded results from local draft draft");
+        } else {
+            const resResponse = await fetch('results.json');
+            results = await resResponse.json();
+            console.log("Loaded results from results.json");
+        }
+
+        // Clean results template if some keys are missing
+        if (!results.matches) results.matches = {};
+        if (!results.group_standings) results.group_standings = {};
+        if (!results.r32_teams) results.r32_teams = [];
+        if (!results.r32_matches) results.r32_matches = {};
+        if (!results.r16_teams) results.r16_teams = [];
+        if (!results.r16_matches) results.r16_matches = {};
+        if (!results.r8_teams) results.r8_teams = [];
+        if (!results.r8_matches) results.r8_matches = {};
+        if (!results.r4_teams) results.r4_teams = [];
+        if (!results.r4_matches) results.r4_matches = {};
+        if (!results.r3_4_teams) results.r3_4_teams = [];
+        if (!results.final_teams) results.final_teams = [];
+        if (!results.r3_4_match) results.r3_4_match = { matchup: '', score: '' };
+        if (!results.final_match) results.final_match = { matchup: '', score: '' };
+
+        // Clone results to officialResults before we load live API scores
+        officialResults = JSON.parse(JSON.stringify(results));
+
+        // 1. Load API Cache from localStorage
+        let apiCache = {
+            matches: {},
+            ko_matches: {},
+            last_updated: 0
+        };
+        const savedCache = localStorage.getItem('porra_api_results_cache');
+        if (savedCache) {
+            try {
+                apiCache = JSON.parse(savedCache);
+                console.log("Loaded API cache from localStorage");
+            } catch (e) {
+                console.error("Error parsing API cache", e);
+            }
+        }
+
+        // 2. Merge cached API scores into results in-memory
+        Object.entries(apiCache.matches || {}).forEach(([matchId, cacheObj]) => {
+            if (!results.matches[matchId] || results.matches[matchId].trim() === "") {
+                results.matches[matchId] = cacheObj.score;
+                if (cacheObj.status === "live") {
+                    provisionalMatches.add(matchId);
+                }
+            }
+        });
+
+        Object.entries(apiCache.ko_matches || {}).forEach(([stageMatchKey, cacheObj]) => {
+            const parts = stageMatchKey.split(':');
+            const stageKey = parts[0];
+            const matchKey = parts[1];
+            
+            if (stageKey === 'single') {
+                if (results[matchKey] && (!results[matchKey].score || results[matchKey].score.trim() === "")) {
+                    results[matchKey].score = cacheObj.score;
+                    if (cacheObj.status === "live") {
+                        provisionalMatches.add(stageMatchKey);
+                    }
+                }
+            } else {
+                if (results[stageKey] && results[stageKey][matchKey] && (!results[stageKey][matchKey].score || results[stageKey][matchKey].score.trim() === "")) {
+                    results[stageKey][matchKey].score = cacheObj.score;
+                    if (cacheObj.status === "live") {
+                        provisionalMatches.add(stageMatchKey);
+                    }
+                }
+            }
+        });
+
+        // 3. Process points and render UI immediately using cache
+        updateAppUI();
+
+        // 4. Background fetch if cache is stale (> 5 min) or has active live matches
+        const now = Date.now();
+        const timeSinceUpdate = now - (apiCache.last_updated || 0);
+
+        let hasActiveLiveMatch = false;
+        Object.values(apiCache.matches || {}).forEach(cObj => {
+            if (cObj.status === "live") hasActiveLiveMatch = true;
+        });
+        Object.values(apiCache.ko_matches || {}).forEach(cObj => {
+            if (cObj.status === "live") hasActiveLiveMatch = true;
+        });
+
+        const shouldFetch = timeSinceUpdate > 5 * 60 * 1000 || hasActiveLiveMatch || !apiCache.last_updated;
+
+        if (shouldFetch) {
+            loadLiveResults().then(() => {
+                updateAppUI();
+            });
+        }
+
+    } catch (e) {
+        console.error("Error loading application files", e);
+        alert("Error al cargar los datos de la porra. Asegúrate de que porra_data.json y results.json estén en la misma carpeta.");
+    }
+}
+
+// Calculate points and render sections
+function updateAppUI() {
+    if (!porraData || !results) return;
+    
+    // 1. Calculate player standings
+    const standings = calculateStandings();
+    
+    // 2. Render classification table
+    renderStandings(standings);
+    
+    // 3. Render matches calendar
+    renderMatches();
+    
+    // 4. Update Header badge with total matches played
+    const playedCount = Object.values(results.matches).filter(val => val && val.trim() !== "").length;
+    document.getElementById('matches-played-badge').innerText = `${playedCount} / 72 Partidos Jugados`;
+
+    // 5. Render Points Evolution Chart
+    renderEvolutionChart();
+}
+
+// Calculate the detailed points and ranking for all players
+function calculateStandings() {
+    const playersPoints = {};
+
+    // Initialize scores
+    porraData.players.forEach(p => {
+        playersPoints[p] = {
+            name: p,
+            total: 0.0,
+            group_stage: 0.0,
+            group_standings: 0.0,
+            ko_stages: 0.0,
+            honor_list: 0.0,
+            breakdown: [] // match by match details
+        };
+    });
+
+    // 1. Group Stage matches points (divisor 2)
+    let rawGroupStagePoints = {};
+    porraData.players.forEach(p => rawGroupStagePoints[p] = 0.0);
+
+    porraData.matches.forEach(m => {
+        const matchKey = `${m.casa}-${m.fuera}`;
+        const actualScore = results.matches[m.id];
+        
+        if (actualScore && actualScore.trim() !== "") {
+            porraData.players.forEach(p => {
+                const pred = porraData.predictions[p].group_stage[matchKey];
+                const outcome = calcOutcomePoints(actualScore, pred);
+                
+                rawGroupStagePoints[p] += outcome.points;
+                playersPoints[p].breakdown.push({
+                    type: 'group_match',
+                    matchId: m.id,
+                    casa: m.casa,
+                    fuera: m.fuera,
+                    jor: m.jor,
+                    actual: actualScore,
+                    pred: pred,
+                    points: outcome.points,
+                    netPoints: outcome.points / 2.0,
+                    details: outcome.details,
+                    outcomeClass: outcome.class
+                });
+            });
+        } else {
+            // Still add pending matches for details view
+            porraData.players.forEach(p => {
+                const pred = porraData.predictions[p].group_stage[matchKey];
+                playersPoints[p].breakdown.push({
+                    type: 'group_match',
+                    matchId: m.id,
+                    casa: m.casa,
+                    fuera: m.fuera,
+                    jor: m.jor,
+                    actual: '-',
+                    pred: pred || '-',
+                    points: 0.0,
+                    netPoints: 0.0,
+                    details: ['Pendiente'],
+                    outcomeClass: 'miss'
+                });
+            });
+        }
+    });
+
+    // Set group stage net points
+    porraData.players.forEach(p => {
+        playersPoints[p].group_stage = rawGroupStagePoints[p] / 2.0;
+    });
+
+    // 2. Group Standings Positions points (divisor 2)
+    porraData.players.forEach(p => {
+        let rawPoints = 0.0;
+        const preds = porraData.predictions[p].group_standings || {};
+        
+        Object.entries(preds).forEach(([item, teamPred]) => {
+            const actual = results.group_standings[item];
+            if (actual && actual.trim() !== "") {
+                const isCorrect = String(actual).toLowerCase() === String(teamPred).toLowerCase();
+                if (isCorrect) {
+                    // 1º and 2º give 2 pts, 3º and 4º give 1 pt
+                    const rulePoint = (item.startsWith("1º") || item.startsWith("2º")) ? 2.0 : 1.0;
+                    rawPoints += rulePoint;
+                }
+            }
+        });
+        playersPoints[p].group_standings = rawPoints / 2.0;
+    });
+
+    // 3. K.O. Stages points (divisor 2)
+    porraData.players.forEach(p => {
+        let rawKOPoints = 0.0;
+        const playerPreds = porraData.predictions[p];
+
+        // -- Round of 32 Teams --
+        const r32_teams_pred = playerPreds.r32_teams || {};
+        const r32_actual = results.r32_teams || [];
+        Object.values(r32_teams_pred).forEach(team => {
+            if (r32_actual.includes(team)) {
+                rawKOPoints += Number(porraData.rules.r32_qualified || 1.0);
+            }
+        });
+
+        // -- Round of 32 Matches --
+        const r32_matches_pred = playerPreds.r32_matches || {};
+        const r32_actual_matches = results.r32_matches || {};
+        Object.entries(r32_matches_pred).forEach(([matchKey, predVal]) => {
+            if (predVal && predVal.includes('·')) {
+                const parts = predVal.split('·');
+                const predMatchup = parts[0];
+                const predScore = parts[1];
+                
+                const actual = r32_actual_matches[matchKey];
+                if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                    // Matchup occurred! Evaluate score
+                    const outcome = calcOutcomePoints(actual.score, predScore);
+                    rawKOPoints += outcome.points;
+                }
+            }
+        });
+
+        // -- Round of 16 Teams --
+        const r16_teams_pred = playerPreds.r16_teams || {};
+        const r16_actual = results.r16_teams || [];
+        Object.values(r16_teams_pred).forEach(team => {
+            if (r16_actual.includes(team)) {
+                rawKOPoints += Number(porraData.rules.r16_qualified || 1.0);
+            }
+        });
+
+        // -- Round of 16 Matches --
+        const r16_matches_pred = playerPreds.r16_matches || {};
+        const r16_actual_matches = results.r16_matches || {};
+        Object.entries(r16_matches_pred).forEach(([matchKey, predVal]) => {
+            if (predVal && predVal.includes('·')) {
+                const parts = predVal.split('·');
+                const predMatchup = parts[0];
+                const predScore = parts[1];
+                
+                const actual = r16_actual_matches[matchKey];
+                if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                    const outcome = calcOutcomePoints(actual.score, predScore);
+                    rawKOPoints += outcome.points;
+                }
+            }
+        });
+
+        // -- Quarterfinals Teams --
+        const r8_teams_pred = playerPreds.r8_teams || {};
+        const r8_actual = results.r8_teams || [];
+        Object.values(r8_teams_pred).forEach(team => {
+            if (r8_actual.includes(team)) {
+                rawKOPoints += Number(porraData.rules.r8_qualified || 1.0);
+            }
+        });
+
+        // -- Quarterfinals Matches --
+        const r8_matches_pred = playerPreds.r8_matches || {};
+        const r8_actual_matches = results.r8_matches || {};
+        Object.entries(r8_matches_pred).forEach(([matchKey, predVal]) => {
+            if (predVal && predVal.includes('·')) {
+                const parts = predVal.split('·');
+                const predMatchup = parts[0];
+                const predScore = parts[1];
+                
+                const actual = r8_actual_matches[matchKey];
+                if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                    const outcome = calcOutcomePoints(actual.score, predScore);
+                    rawKOPoints += outcome.points;
+                }
+            }
+        });
+
+        // -- Semifinals Teams --
+        const r4_teams_pred = playerPreds.r4_teams || {};
+        const r4_actual = results.r4_teams || [];
+        Object.values(r4_teams_pred).forEach(team => {
+            if (r4_actual.includes(team)) {
+                rawKOPoints += Number(porraData.rules.r4_qualified || 1.0);
+            }
+        });
+
+        // -- Semifinals Matches --
+        const r4_matches_pred = playerPreds.r4_matches || {};
+        const r4_actual_matches = results.r4_matches || {};
+        Object.entries(r4_matches_pred).forEach(([matchKey, predVal]) => {
+            if (predVal && predVal.includes('·')) {
+                const parts = predVal.split('·');
+                const predMatchup = parts[0];
+                const predScore = parts[1];
+                
+                const actual = r4_actual_matches[matchKey];
+                if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                    const outcome = calcOutcomePoints(actual.score, predScore);
+                    rawKOPoints += outcome.points;
+                }
+            }
+        });
+
+        // -- 3rd/4th Teams --
+        const r3_4_teams_pred = playerPreds.r3_4_teams || {};
+        const r3_4_actual = results.r3_4_teams || [];
+        Object.values(r3_4_teams_pred).forEach(team => {
+            if (r3_4_actual.includes(team)) {
+                rawKOPoints += Number(porraData.rules.r3_4_qualified || 1.0);
+            }
+        });
+
+        // -- Finalists Teams --
+        const final_teams_pred = playerPreds.final_teams || {};
+        const final_actual = results.final_teams || [];
+        Object.values(final_teams_pred).forEach(team => {
+            if (final_actual.includes(team)) {
+                rawKOPoints += Number(porraData.rules.final_qualified || 2.0);
+            }
+        });
+
+        // -- 3rd/4th Match --
+        const r3_4_match_pred = playerPreds.r3_4_match;
+        if (r3_4_match_pred && r3_4_match_pred.includes('·')) {
+            const parts = r3_4_match_pred.split('·');
+            const predMatchup = parts[0];
+            const predScore = parts[1];
+            const actual = results.r3_4_match;
+            if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                const outcome = calcOutcomePoints(actual.score, predScore);
+                rawKOPoints += outcome.points;
+            }
+        }
+
+        // -- Final Match --
+        const final_match_pred = playerPreds.final_match;
+        if (final_match_pred && final_match_pred.includes('·')) {
+            const parts = final_match_pred.split('·');
+            const predMatchup = parts[0];
+            const predScore = parts[1];
+            const actual = results.final_match;
+            if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                const outcome = calcOutcomePoints(actual.score, predScore);
+                rawKOPoints += outcome.points;
+            }
+        }
+
+        playersPoints[p].ko_stages = rawKOPoints / 2.0;
+    });
+
+    // 4. Honor List points (divisor 2)
+    porraData.players.forEach(p => {
+        let rawHonorPoints = 0.0;
+        const preds = porraData.predictions[p].honor_list || {};
+
+        const mappings = {
+            'Campeón': { key: 'honor_champ', ruleKey: 'honor_champ' },
+            'Subcampeón': { key: 'honor_runner', ruleKey: 'honor_runner' },
+            'Tercero': { key: 'honor_3rd', ruleKey: 'honor_3rd' },
+            'Cuarto': { key: 'honor_4th', ruleKey: 'honor_4th' },
+            'Goleador': { key: 'honor_scorer', ruleKey: 'honor_scorer' },
+            'Asistente': { key: 'honor_assists', ruleKey: 'honor_assists' },
+            'M.V.P.': { key: 'honor_mvp', ruleKey: 'honor_mvp' },
+            'Portero': { key: 'honor_gk', ruleKey: 'honor_gk' },
+            'Joven': { key: 'honor_young', ruleKey: 'honor_young' }
+        };
+
+        Object.entries(preds).forEach(([item, teamPred]) => {
+            // Check if item contains one of the mapping labels
+            let matchedMapping = null;
+            for (const [label, mapObj] of Object.entries(mappings)) {
+                if (item.toLowerCase().includes(label.toLowerCase())) {
+                    matchedMapping = mapObj;
+                    break;
+                }
+            }
+
+            if (matchedMapping) {
+                const actual = results[matchedMapping.key];
+                if (actual && actual.trim() !== "") {
+                    const isCorrect = String(actual).toLowerCase() === String(teamPred).toLowerCase();
+                    if (isCorrect) {
+                        const rulePoints = Number(porraData.rules[matchedMapping.ruleKey] || 1.0);
+                        rawHonorPoints += rulePoints;
+                    }
+                }
+            }
+        });
+
+        playersPoints[p].honor_list = rawHonorPoints / 2.0;
+    });
+
+    // Calculate Grand Total for each player
+    porraData.players.forEach(p => {
+        playersPoints[p].total = playersPoints[p].group_stage + 
+                                  playersPoints[p].group_standings + 
+                                  playersPoints[p].ko_stages + 
+                                  playersPoints[p].honor_list;
+    });
+
+    // Return as array sorted by rank
+    return Object.values(playersPoints).sort((a, b) => {
+        if (b.total !== a.total) {
+            return b.total - a.total; // highest points first
+        }
+        // Tie-breaker: sort alphabetically by name if points are equal
+        return a.name.localeCompare(b.name);
+    });
+}
+
+// Calculate the points for a match given its actual result and prediction
+function calcOutcomePoints(actualScoreStr, predStr) {
+    if (!actualScoreStr || !predStr) return { points: 0.0, class: 'miss', details: ['Fallo'] };
+
+    // Format check for prediction: "sign|score" (e.g. "1|2-1")
+    if (!predStr.includes('|')) return { points: 0.0, class: 'miss', details: ['Predicción incompleta'] };
+    
+    const parts = predStr.split('|');
+    const predSign = parts[0].trim();
+    const predScore = parts[1].trim();
+
+    const predScoreParts = predScore.split('-');
+    const actualScoreParts = actualScoreStr.split('-');
+    
+    if (predScoreParts.length !== 2 || actualScoreParts.length !== 2) {
+        return { points: 0.0, class: 'miss', details: ['Formato incorrecto'] };
+    }
+
+    const predHome = parseInt(predScoreParts[0]);
+    const predAway = parseInt(predScoreParts[1]);
+    const actHome = parseInt(actualScoreParts[0]);
+    const actAway = parseInt(actualScoreParts[1]);
+
+    if (isNaN(predHome) || isNaN(predAway) || isNaN(actHome) || isNaN(actAway)) {
+        return { points: 0.0, class: 'miss', details: ['Formato no numérico'] };
+    }
+
+    const actSign = actHome > actAway ? '1' : (actAway > actHome ? '2' : 'X');
+
+    let points = 0.0;
+    let details = [];
+    let outcomeClass = 'miss';
+
+    // 1. Sign Check (1X2)
+    if (predSign === actSign) {
+        points += 1.0;
+        details.push("Signo 1X2 (+1)");
+        outcomeClass = 'sign';
+
+        // 2. Goal Difference Check
+        const actDiff = actHome - actAway;
+        const predDiff = predHome - predAway;
+        if (actDiff === predDiff) {
+            points += 1.0;
+            details.push("Diferencia (+1)");
+            outcomeClass = 'diff';
+        }
+
+        // 3. Exact Score Check
+        if (actHome === predHome && actAway === predAway) {
+            points += 2.0;
+            details.push("Resultado exacto (+2)");
+            outcomeClass = 'exact';
+        }
+    } else {
+        details.push("Fallo");
+    }
+
+    return {
+        points: points,
+        class: outcomeClass,
+        details: details
+    };
+}
+
+// Render the classification standings table
+function renderStandings(standings) {
+    const tbody = document.getElementById('standings-body');
+    tbody.innerHTML = '';
+    
+    standings.forEach((player, index) => {
+        const tr = document.createElement('tr');
+        tr.classList.add('clickable-row');
+        tr.addEventListener('click', () => openPlayerModal(player.name));
+        
+        let rankClass = '';
+        let rankVal = `${index + 1}º`;
+        if (index === 0) {
+            rankClass = 'player-rank-gold';
+            rankVal = `<i class="fa-solid fa-trophy"></i> 1º`;
+        } else if (index === 1) {
+            rankClass = 'player-rank-silver';
+            rankVal = `2º`;
+        } else if (index === 2) {
+            rankClass = 'player-rank-bronze';
+            rankVal = `3º`;
+        }
+
+        tr.innerHTML = `
+            <td class="text-center ${rankClass}">${rankVal}</td>
+            <td class="player-row-name">${player.name}</td>
+            <td class="text-center bold-score">${player.total.toFixed(1)}</td>
+            <td class="text-center">${player.group_stage.toFixed(1)}</td>
+            <td class="text-center">${player.group_standings.toFixed(1)}</td>
+            <td class="text-center">${player.ko_stages.toFixed(1)}</td>
+            <td class="text-center">${player.honor_list.toFixed(1)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// Render matches calendar grid
+function renderMatches() {
+    const grid = document.getElementById('matches-grid');
+    grid.innerHTML = '';
+
+    const filteredMatches = porraData.matches.filter(m => {
+        if (currentFilter === 'all') return true;
+        return m.jor === currentFilter;
+    });
+
+    filteredMatches.forEach(m => {
+        const actualScore = results.matches[m.id] || '';
+        const isPlayed = actualScore.trim() !== "";
+        
+        const card = document.createElement('div');
+        card.classList.add('match-card');
+        
+        // Split actual score if it exists
+        let homeScore = '';
+        let awayScore = '';
+        if (isPlayed) {
+            const parts = actualScore.split('-');
+            homeScore = parts[0] || '';
+            awayScore = parts[1] || '';
+        }
+
+        // Generate flags (images)
+        const flagHome = getFlagHtml(m.casa, true);
+        const flagAway = getFlagHtml(m.fuera, true);
+
+        const cardHeader = `
+            <div class="match-header">
+                <span>Partido ${m.id}</span>
+                <span>${m.grupo || ''} - ${m.jor}</span>
+            </div>
+        `;
+
+        let scoreContent = '';
+        if (editMode) {
+            scoreContent = `
+                <div class="score-inputs">
+                    <input type="number" min="0" class="score-input" data-match-id="${m.id}" data-team="home" value="${homeScore}" placeholder="-">
+                    <span class="score-hyphen">-</span>
+                    <input type="number" min="0" class="score-input" data-match-id="${m.id}" data-team="away" value="${awayScore}" placeholder="-">
+                </div>
+            `;
+        } else {
+            scoreContent = `
+                <div class="score-display">
+                    <span class="score-number">${isPlayed ? homeScore : '-'}</span>
+                    <span class="score-hyphen">-</span>
+                    <span class="score-number">${isPlayed ? awayScore : '-'}</span>
+                </div>
+            `;
+        }
+
+        const cardBody = `
+            <div class="match-body">
+                <div class="team-display">
+                    ${flagHome}
+                    <span class="team-name" title="${m.casa}">${m.casa}</span>
+                </div>
+                ${scoreContent}
+                <div class="team-display">
+                    ${flagAway}
+                    <span class="team-name" title="${m.fuera}">${m.fuera}</span>
+                </div>
+            </div>
+        `;
+
+        let statusLabel = '';
+        if (isPlayed) {
+            if (provisionalMatches.has(String(m.id))) {
+                statusLabel = `<span class="provisional-match-label"><i class="fa-solid fa-arrows-rotate"></i> Provisional (API)</span>`;
+            } else {
+                statusLabel = `<span class="played-match-label"><i class="fa-solid fa-circle-check"></i> Finalizado</span>`;
+            }
+        } else {
+            statusLabel = `<span class="pending-match-label"><i class="fa-solid fa-clock"></i> Pendiente</span>`;
+        }
+
+        const cardFooter = `
+            <div class="match-footer">
+                ${statusLabel}
+            </div>
+        `;
+
+        card.innerHTML = cardHeader + cardBody + cardFooter;
+        grid.appendChild(card);
+    });
+
+    // Setup input listeners in edit mode
+    if (editMode) {
+        document.querySelectorAll('.score-input').forEach(input => {
+            input.addEventListener('change', handleScoreInputChange);
+        });
+    }
+}
+
+// Handle changes in match scores inputs
+function handleScoreInputChange(e) {
+    const matchId = e.target.getAttribute('data-match-id');
+    const team = e.target.getAttribute('data-team');
+    const val = e.target.value;
+
+    // Find the input pairs
+    const homeInput = document.querySelector(`.score-input[data-match-id="${matchId}"][data-team="home"]`);
+    const awayInput = document.querySelector(`.score-input[data-match-id="${matchId}"][data-team="away"]`);
+
+    const homeVal = homeInput.value.trim();
+    const awayVal = awayInput.value.trim();
+
+    const scoreStr = (homeVal !== "" && awayVal !== "") ? `${homeVal}-${awayVal}` : "";
+    
+    // Update both active results and officialResults
+    results.matches[matchId] = scoreStr;
+    officialResults.matches[matchId] = scoreStr;
+
+    // If edited manually, it's no longer provisional
+    provisionalMatches.delete(String(matchId));
+
+    // Save official results draft in local storage
+    localStorage.setItem('porra_results_draft', JSON.stringify(officialResults));
+    
+    // Recalculate standings and update table/views instantly!
+    updateAppUI();
+}
+
+// Tab navigation handler
+function setupEventListeners() {
+    // Nav tabs
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const targetTab = e.currentTarget.getAttribute('data-tab');
+            
+            // Remove active states
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            // Set active states
+            e.currentTarget.classList.add('active');
+            document.getElementById(targetTab).classList.add('active');
+            activeTab = targetTab;
+        });
+    });
+
+    // Filters for matches
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+            currentFilter = e.currentTarget.getAttribute('data-filter');
+            renderMatches();
+        });
+    });
+
+    // Admin Mode Toggle
+    const editBtn = document.getElementById('enable-edit-btn');
+    editBtn.addEventListener('click', () => {
+        editMode = !editMode;
+        if (editMode) {
+            editBtn.innerHTML = `<i class="fa-solid fa-lock-open"></i> Modo Lectura`;
+            editBtn.classList.remove('btn-secondary');
+            editBtn.classList.add('btn-primary');
+        } else {
+            editBtn.innerHTML = `<i class="fa-solid fa-lock"></i> Modo Edición (Admin)`;
+            editBtn.classList.remove('btn-primary');
+            editBtn.classList.add('btn-secondary');
+        }
+        renderMatches();
+    });
+
+    // Modal Close
+    document.getElementById('modal-close-btn').addEventListener('click', closePlayerModal);
+    document.getElementById('player-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'player-modal') closePlayerModal();
+    });
+
+    // Modal sub-tabs
+    document.querySelectorAll('.tab-sub-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.tab-sub-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.modal-tab-content').forEach(c => c.classList.remove('active'));
+            
+            e.currentTarget.classList.add('active');
+            const subtabId = e.currentTarget.getAttribute('data-subtab');
+            document.getElementById(subtabId).classList.add('active');
+        });
+    });
+
+    // Descargar JSON
+    document.getElementById('download-json-btn').addEventListener('click', downloadResultsJSON);
+
+    // Hacer oficiales resultados provisorios (API)
+    const approveBtn = document.getElementById('approve-provisional-btn');
+    if (approveBtn) {
+        approveBtn.addEventListener('click', approveProvisionalScores);
+    }
+}
+
+function approveProvisionalScores() {
+    if (provisionalMatches.size === 0) {
+        alert("No hay resultados provisionales cargados desde la API para aprobar.");
+        return;
+    }
+
+    if (confirm(`¿Estás seguro de que quieres hacer oficiales los ${provisionalMatches.size} resultados cargados provisionalmente de la API? Esto los guardará de forma oficial para que puedas descargarlos.`)) {
+        // Copy provisional match scores to officialResults
+        provisionalMatches.forEach(matchId => {
+            // For Group Stage matches
+            if (!matchId.includes(':')) {
+                if (results.matches[matchId]) {
+                    officialResults.matches[matchId] = results.matches[matchId];
+                }
+            } else {
+                // For KO matches (formatted like stageKey:matchKey)
+                const parts = matchId.split(':');
+                const stageKey = parts[0];
+                const matchKey = parts[1];
+                if (stageKey === 'single') {
+                    if (results[matchKey]) {
+                        officialResults[matchKey].score = results[matchKey].score;
+                    }
+                } else {
+                    if (results[stageKey] && results[stageKey][matchKey]) {
+                        officialResults[stageKey][matchKey].score = results[stageKey][matchKey].score;
+                    }
+                }
+            }
+        });
+
+        // Clear provisional set
+        provisionalMatches.clear();
+
+        // Save official results draft in local storage
+        localStorage.setItem('porra_results_draft', JSON.stringify(officialResults));
+
+        // Update UI
+        updateAppUI();
+
+        alert("Resultados provisionales aprobados en memoria. Ahora puedes pulsar 'Descargar results.json' para descargar el archivo actualizado y subirlo a GitHub.");
+    }
+}
+
+// Modal management
+function openPlayerModal(playerName) {
+    const player = calculateStandings().find(p => p.name === playerName);
+    if (!player) return;
+
+    document.getElementById('modal-player-name').innerText = `Desglose - ${player.name}`;
+    document.getElementById('modal-total-score').innerText = `${player.total.toFixed(1)} pts`;
+    document.getElementById('modal-fase-score').innerText = `F. Grupos: ${player.group_stage.toFixed(1)} | Posiciones: ${player.group_standings.toFixed(1)} | Eliminatorias: ${(player.ko_stages + player.honor_list).toFixed(1)}`;
+
+    // Render Group Matches predictions table
+    const groupsBody = document.getElementById('modal-groups-body');
+    groupsBody.innerHTML = '';
+    
+    // Sort player's group predictions by match ID
+    const groupMatches = player.breakdown.filter(item => item.type === 'group_match').sort((a,b) => a.matchId - b.matchId);
+    
+    groupMatches.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.classList.add('prediction-row');
+        
+        let scoreBadge = '';
+        if (item.actual === '-') {
+            scoreBadge = `<span class="prediction-badge badge-miss">Pendiente</span>`;
+        } else {
+            let badgeText = "Fallo (0)";
+            let badgeClass = "badge-miss";
+            if (item.outcomeClass === 'exact') {
+                badgeText = "Exacto (2.0)";
+                badgeClass = "badge-exact";
+            } else if (item.outcomeClass === 'diff') {
+                badgeText = "Dif. Goles (1.0)";
+                badgeClass = "badge-diff";
+            } else if (item.outcomeClass === 'sign') {
+                badgeText = "Signo 1X2 (0.5)";
+                badgeClass = "badge-sign";
+            }
+            scoreBadge = `<span class="prediction-badge ${badgeClass}">${badgeText}</span>`;
+        }
+
+        const flagHome = getFlagHtml(item.casa, false);
+        const flagAway = getFlagHtml(item.fuera, false);
+
+        tr.innerHTML = `
+            <td><small class="text-muted">${item.jor}</small> ${flagHome} ${item.casa} - ${item.fuera} ${flagAway}</td>
+            <td class="text-center">${item.pred}</td>
+            <td class="text-center"><strong>${item.actual}</strong></td>
+            <td class="text-center text-muted">${item.points.toFixed(0)}</td>
+            <td class="text-center">${scoreBadge}</td>
+        `;
+        groupsBody.appendChild(tr);
+    });
+
+    // Render K.O. stages and Specials predictions
+    const koList = document.getElementById('modal-ko-list');
+    koList.innerHTML = '';
+    
+    // Add sections for Special predictions
+    const playerPreds = porraData.predictions[player.name];
+
+    // Standings Predictions
+    const standingsCard = createKOCard("Predicciones de Grupos (1º al 4º)");
+    Object.entries(playerPreds.group_standings || {}).forEach(([item, teamPred]) => {
+        const actual = results.group_standings[item] || '';
+        const isCorrect = actual && actual.toLowerCase() === teamPred.toLowerCase();
+        const pts = isCorrect ? (item.startsWith("1º") || item.startsWith("2º") ? 1.0 : 0.5) : 0.0;
+        
+        addKOItem(standingsCard, item, teamPred, actual, pts);
+    });
+    koList.appendChild(standingsCard);
+
+    // Advancing teams lists
+    const r32Card = createKOCard("Equipos clasificados a Dieciseisavos (1/16)");
+    Object.entries(playerPreds.r32_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.r32_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 0.5 : 0.0;
+        addKOItem(r32Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    koList.appendChild(r32Card);
+
+    const r16Card = createKOCard("Equipos clasificados a Octavos (1/8)");
+    Object.entries(playerPreds.r16_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.r16_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 0.5 : 0.0;
+        addKOItem(r16Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    koList.appendChild(r16Card);
+
+    const r8Card = createKOCard("Equipos clasificados a Cuartos (1/4)");
+    Object.entries(playerPreds.r8_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.r8_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 0.5 : 0.0;
+        addKOItem(r8Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    koList.appendChild(r8Card);
+
+    const r4Card = createKOCard("Equipos clasificados a Semifinales (1/2)");
+    Object.entries(playerPreds.r4_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.r4_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 0.5 : 0.0;
+        addKOItem(r4Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    koList.appendChild(r4Card);
+
+    const finalCard = createKOCard("Equipos Finalistas");
+    Object.entries(playerPreds.final_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.final_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 1.0 : 0.0;
+        addKOItem(finalCard, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    koList.appendChild(finalCard);
+
+    const r3_4Card = createKOCard("Equipos en 3er/4to puesto");
+    Object.entries(playerPreds.r3_4_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.r3_4_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 0.5 : 0.0;
+        addKOItem(r3_4Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    koList.appendChild(r3_4Card);
+
+    // K.O. Bracket Matchups and Scores
+    const bracketsCard = createKOCard("Enfrentamientos directos (K.O.)");
+    
+    // Dieciseisavos
+    Object.entries(playerPreds.r32_matches || {}).forEach(([key, predVal]) => {
+        evaluateKOBracketMatch(bracketsCard, "Dieciseisavos", key, predVal, results.r32_matches);
+    });
+    // Octavos
+    Object.entries(playerPreds.r16_matches || {}).forEach(([key, predVal]) => {
+        evaluateKOBracketMatch(bracketsCard, "Octavos", key, predVal, results.r16_matches);
+    });
+    // Cuartos
+    Object.entries(playerPreds.r8_matches || {}).forEach(([key, predVal]) => {
+        evaluateKOBracketMatch(bracketsCard, "Cuartos", key, predVal, results.r8_matches);
+    });
+    // Semifinales
+    Object.entries(playerPreds.r4_matches || {}).forEach(([key, predVal]) => {
+        evaluateKOBracketMatch(bracketsCard, "Semifinales", key, predVal, results.r4_matches);
+    });
+
+    // Partido 3º y 4º puesto
+    if (playerPreds.r3_4_match) {
+        evaluateSingleKOMatch(bracketsCard, "Tercer y Cuarto Puesto", playerPreds.r3_4_match, results.r3_4_match);
+    }
+    // Final
+    if (playerPreds.final_match) {
+        evaluateSingleKOMatch(bracketsCard, "Gran Final", playerPreds.final_match, results.final_match);
+    }
+
+    koList.appendChild(bracketsCard);
+
+    // Cuadro de honor
+    const honorCard = createKOCard("Cuadro de Honor y Premios Especiales");
+    const mappings = {
+        'Campeón': { key: 'honor_champ', label: 'Campeón Mundial', pts: 5.0 },
+        'Subcampeón': { key: 'honor_runner', label: 'Subcampeón', pts: 3.0 },
+        'Tercero': { key: 'honor_3rd', label: 'Tercero', pts: 2.0 },
+        'Cuarto': { key: 'honor_4th', label: 'Cuarto', pts: 1.0 },
+        'Goleador': { key: 'honor_scorer', label: 'Máximo Goleador', pts: 0.5 },
+        'Asistente': { key: 'honor_assists', label: 'Máximo Asistente', pts: 0.5 },
+        'M.V.P.': { key: 'honor_mvp', label: 'M.V.P. del Torneo', pts: 0.5 },
+        'Portero': { key: 'honor_gk', label: 'Mejor Portero', pts: 0.5 },
+        'Joven': { key: 'honor_young', label: 'Mejor Jugador Joven', pts: 0.5 }
+    };
+
+    Object.entries(playerPreds.honor_list || {}).forEach(([item, teamPred]) => {
+        let matched = null;
+        for (const [label, mapObj] of Object.entries(mappings)) {
+            if (item.toLowerCase().includes(label.toLowerCase())) {
+                matched = mapObj;
+                break;
+            }
+        }
+        if (matched) {
+            const actual = results[matched.key] || '';
+            const isCorrect = actual && actual.toLowerCase() === teamPred.toLowerCase();
+            const pts = isCorrect ? matched.pts : 0.0;
+            addKOItem(honorCard, matched.label, teamPred, actual, pts);
+        }
+    });
+    koList.appendChild(honorCard);
+
+    // Open modal
+    document.getElementById('player-modal').classList.add('open');
+}
+
+function createKOCard(title) {
+    const card = document.createElement('div');
+    card.classList.add('card');
+    card.style.marginBottom = '1rem';
+    card.innerHTML = `<h4 style="font-family:var(--font-heading); color:var(--color-accent); margin-bottom:0.75rem; font-size:1.1rem; border-bottom:1px solid var(--border-color); padding-bottom:0.4rem;">${title}</h4><div class="ko-items-container"></div>`;
+    return card;
+}
+
+function addKOItem(card, label, pred, actual, pts) {
+    const container = card.querySelector('.ko-items-container');
+    const div = document.createElement('div');
+    div.classList.add('ko-pred-item');
+    div.style.marginBottom = '0.5rem';
+    
+    let ptsLabel = '';
+    if (pts > 0) {
+        ptsLabel = `<span class="ko-points-won" style="color:var(--color-success)">+${pts.toFixed(1)} pts</span>`;
+    } else {
+        ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted)">0.0 pts</span>`;
+    }
+
+    const flagPred = getFlagHtml(pred);
+    const flagActual = (actual && actual !== '-' && actual !== 'Eliminado' && actual !== 'Clasificado') ? getFlagHtml(actual) : '';
+
+    div.innerHTML = `
+        <div class="ko-pred-label">
+            <strong>${label}</strong><br>
+            <span style="font-size:0.8rem">Predicho: ${flagPred} ${pred}</span>
+        </div>
+        <div class="ko-pred-val">
+            <span style="font-size:0.85rem; color:var(--text-muted)">Real: ${flagActual} ${actual || '-'}</span>
+            ${ptsLabel}
+        </div>
+    `;
+    container.appendChild(div);
+}
+
+function evaluateKOBracketMatch(card, stageLabel, matchKey, predVal, actualMatchesList) {
+    if (!predVal || !predVal.includes('·')) return;
+    const parts = predVal.split('·');
+    const predMatchup = parts[0];
+    const predScore = parts[1];
+    
+    const actual = actualMatchesList[matchKey];
+    let actualMatchup = '';
+    let actualScore = '';
+    let pts = 0.0;
+    
+    if (actual) {
+        actualMatchup = actual.matchup || '';
+        actualScore = actual.score || '';
+    }
+
+    const isMatchupCorrect = actualMatchup && actualMatchup.toLowerCase() === predMatchup.toLowerCase();
+    
+    if (isMatchupCorrect && actualScore) {
+        const outcome = calcOutcomePoints(actualScore, predScore);
+        pts = outcome.points / 2.0; // Net points
+    }
+
+    const container = card.querySelector('.ko-items-container');
+    const div = document.createElement('div');
+    div.classList.add('ko-pred-item');
+    div.style.marginBottom = '0.5rem';
+    
+    let ptsLabel = '';
+    if (pts > 0) {
+        ptsLabel = `<span class="ko-points-won" style="color:var(--color-success)">+${pts.toFixed(1)} pts</span>`;
+    } else {
+        ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted)">0.0 pts</span>`;
+    }
+
+    div.innerHTML = `
+        <div class="ko-pred-label">
+            <strong>${stageLabel} - ${matchKey}</strong><br>
+            <span style="font-size:0.8rem; color:#fff">Predicción: ${getMatchupFlagsHtml(predMatchup)} (${predScore})</span>
+        </div>
+        <div class="ko-pred-val">
+            <span style="font-size:0.8rem; color:var(--text-muted)">Real: ${actualMatchup ? getMatchupFlagsHtml(actualMatchup) : 'Pendiente'} ${actualScore ? '('+actualScore+')' : ''}</span>
+            ${ptsLabel}
+        </div>
+    `;
+    container.appendChild(div);
+}
+
+function evaluateSingleKOMatch(card, label, predVal, actualMatchObj) {
+    if (!predVal || !predVal.includes('·')) return;
+    const parts = predVal.split('·');
+    const predMatchup = parts[0];
+    const predScore = parts[1];
+    
+    let actualMatchup = '';
+    let actualScore = '';
+    let pts = 0.0;
+    
+    if (actualMatchObj) {
+        actualMatchup = actualMatchObj.matchup || '';
+        actualScore = actualMatchObj.score || '';
+    }
+
+    const isMatchupCorrect = actualMatchup && actualMatchup.toLowerCase() === predMatchup.toLowerCase();
+    
+    if (isMatchupCorrect && actualScore) {
+        const outcome = calcOutcomePoints(actualScore, predScore);
+        pts = outcome.points / 2.0; // Net points
+    }
+
+    const container = card.querySelector('.ko-items-container');
+    const div = document.createElement('div');
+    div.classList.add('ko-pred-item');
+    div.style.marginBottom = '0.5rem';
+    
+    let ptsLabel = '';
+    if (pts > 0) {
+        ptsLabel = `<span class="ko-points-won" style="color:var(--color-success)">+${pts.toFixed(1)} pts</span>`;
+    } else {
+        ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted)">0.0 pts</span>`;
+    }
+
+    div.innerHTML = `
+        <div class="ko-pred-label">
+            <strong>${label}</strong><br>
+            <span style="font-size:0.8rem; color:#fff">Predicción: ${getMatchupFlagsHtml(predMatchup)} (${predScore})</span>
+        </div>
+        <div class="ko-pred-val">
+            <span style="font-size:0.8rem; color:var(--text-muted)">Real: ${actualMatchup ? getMatchupFlagsHtml(actualMatchup) : 'Pendiente'} ${actualScore ? '('+actualScore+')' : ''}</span>
+            ${ptsLabel}
+        </div>
+    `;
+    container.appendChild(div);
+}
+
+function closePlayerModal() {
+    document.getElementById('player-modal').classList.remove('open');
+}
+
+// Download local results state as results.json file
+function downloadResultsJSON() {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(officialResults, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", "results.json");
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+}
+
+// Helper: get HTML for country flag image from flagcdn
+function getFlagHtml(countryName, isLarge = false) {
+    if (!countryName) return "";
+    
+    // Map Spanish country name to ISO 2-letter code
+    const isoCodes = {
+        'México': 'mx',
+        'Sudáfrica': 'za',
+        'Corea del Sur': 'kr',
+        'República Checa': 'cz',
+        'Canadá': 'ca',
+        'Bosnia y Herzegovina': 'ba',
+        'Catar': 'qa',
+        'Suiza': 'ch',
+        'Brasil': 'br',
+        'Marruecos': 'ma',
+        'Haití': 'ht',
+        'Escocia': 'gb-sct',
+        'Estados Unidos': 'us',
+        'Paraguay': 'py',
+        'Australia': 'au',
+        'Turquía': 'tr',
+        'Alemania': 'de',
+        'Curazao': 'cw',
+        'Costa de Marfil': 'ci',
+        'Ecuador': 'ec',
+        'Países Bajos': 'nl',
+        'Japón': 'jp',
+        'Suecia': 'se',
+        'Túnez': 'tn',
+        'Bélgica': 'be',
+        'Egipto': 'eg',
+        'Irán': 'ir',
+        'Nueva Zelanda': 'nz',
+        'España': 'es',
+        'Cabo Verde': 'cv',
+        'Arabia Saudita': 'sa',
+        'Uruguay': 'uy',
+        'Francia': 'fr',
+        'Senegal': 'sn',
+        'Irak': 'iq',
+        'Noruega': 'no',
+        'Argentina': 'ar',
+        'Argelia': 'dz',
+        'Austria': 'at',
+        'Jordania': 'jo',
+        'Portugal': 'pt',
+        'RD Congo': 'cd',
+        'Uzbekistán': 'uz',
+        'Colombia': 'co',
+        'Inglaterra': 'gb-eng',
+        'Croacia': 'hr',
+        'Ghana': 'gh',
+        'Panamá': 'pa'
+    };
+
+    const code = isoCodes[countryName.trim()];
+    if (!code) return "";
+
+    if (isLarge) {
+        return `<img src="https://flagcdn.com/48x36/${code}.png" alt="${countryName}" class="team-flag-img">`;
+    } else {
+        return `<img src="https://flagcdn.com/20x15/${code}.png" alt="${countryName}" class="flag-img">`;
+    }
+}
+
+// Helper to render flags for matchups like "España-Alemania"
+function getMatchupFlagsHtml(matchupStr) {
+    if (!matchupStr || !matchupStr.includes('-')) return matchupStr;
+    const teams = matchupStr.split('-');
+    if (teams.length !== 2) return matchupStr;
+    const t1 = teams[0].trim();
+    const t2 = teams[1].trim();
+    return `${getFlagHtml(t1)} ${t1} - ${t2} ${getFlagHtml(t2)}`;
+}
+
+// Fetch live World Cup match results dynamically from openfootball public API
+async function loadLiveResults() {
+    try {
+        console.log("Fetching live results from openfootball API...");
+        const response = await fetch('https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json');
+        if (!response.ok) {
+            console.warn("Failed to fetch live results from openfootball API");
+            return;
+        }
+        const data = await response.json();
+        if (!data || !data.matches) return;
+
+        // Translation dictionary English -> Spanish
+        const TEAM_TRANSLATIONS = {
+            'mexico': 'México',
+            'south africa': 'Sudáfrica',
+            'south korea': 'Corea del Sur',
+            'korea republic': 'Corea del Sur',
+            'czech republic': 'República Checa',
+            'czechia': 'República Checa',
+            'canada': 'Canadá',
+            'bosnia & herzegovina': 'Bosnia y Herzegovina',
+            'bosnia and herzegovina': 'Bosnia y Herzegovina',
+            'qatar': 'Catar',
+            'switzerland': 'Suiza',
+            'brazil': 'Brasil',
+            'morocco': 'Marruecos',
+            'haiti': 'Haití',
+            'scotland': 'Escocia',
+            'united states': 'Estados Unidos',
+            'usa': 'Estados Unidos',
+            'paraguay': 'Paraguay',
+            'australia': 'Australia',
+            'turkiye': 'Turquía',
+            'turkey': 'Turquía',
+            'germany': 'Alemania',
+            'curacao': 'Curazao',
+            'curaçao': 'Curazao',
+            'cote d\'ivoire': 'Costa de Marfil',
+            'ivory coast': 'Costa de Marfil',
+            'ecuador': 'Ecuador',
+            'netherlands': 'Países Bajos',
+            'japan': 'Japón',
+            'sweden': 'Suecia',
+            'tunisia': 'Túnez',
+            'belgium': 'Bélgica',
+            'egypt': 'Egipto',
+            'ir iran': 'Irán',
+            'iran': 'Irán',
+            'new zealand': 'Nueva Zelanda',
+            'spain': 'España',
+            'cabo verde': 'Cabo Verde',
+            'cape verde': 'Cabo Verde',
+            'saudi arabia': 'Arabia Saudita',
+            'uruguay': 'Uruguay',
+            'france': 'Francia',
+            'senegal': 'Senegal',
+            'iraq': 'Irak',
+            'norway': 'Noruega',
+            'argentina': 'Argentina',
+            'algeria': 'Argelia',
+            'austria': 'Austria',
+            'jordan': 'Jordania',
+            'portugal': 'Portugal',
+            'congo dr': 'RD Congo',
+            'dr congo': 'RD Congo',
+            'uzbekistan': 'Uzbekistán',
+            'colombia': 'Colombia',
+            'england': 'Inglaterra',
+            'croatia': 'Croacia',
+            'ghana': 'Ghana',
+            'panama': 'Panamá'
+        };
+
+        const translateTeam = (name) => {
+            if (!name) return "";
+            const clean = name.trim().toLowerCase();
+            return TEAM_TRANSLATIONS[clean] || name;
+        };
+
+        // 1. For each match in the API data (Group Stage)
+        data.matches.forEach(apiMatch => {
+            if (apiMatch.score && apiMatch.score.ft) {
+                const apiHome = translateTeam(apiMatch.team1);
+                const apiAway = translateTeam(apiMatch.team2);
+                const scoreStr = `${apiMatch.score.ft[0]}-${apiMatch.score.ft[1]}`;
+
+                // Find corresponding match in local porraData
+                const localMatch = porraData.matches.find(m => 
+                    (m.casa === apiHome && m.fuera === apiAway) ||
+                    (m.casa === apiAway && m.fuera === apiHome)
+                );
+
+                if (localMatch) {
+                    const matchIdStr = String(localMatch.id);
+                    // Only overwrite if it is not already filled in results.json (fixed by admin)
+                    if (!results.matches[matchIdStr] || results.matches[matchIdStr].trim() === "") {
+                        results.matches[matchIdStr] = scoreStr;
+                        provisionalMatches.add(matchIdStr);
+                    }
+                }
+            }
+        });
+
+        // 2. Loop over K.O. stage matches
+        const koStages = [
+            { key: 'r32_matches', data: results.r32_matches },
+            { key: 'r16_matches', data: results.r16_matches },
+            { key: 'r8_matches', data: results.r8_matches },
+            { key: 'r4_matches', data: results.r4_matches }
+        ];
+
+        koStages.forEach(stage => {
+            if (!stage.data) return;
+            Object.entries(stage.data).forEach(([matchKey, matchObj]) => {
+                if (matchObj && matchObj.matchup && (!matchObj.score || matchObj.score.trim() === "")) {
+                    const teams = matchObj.matchup.split('-');
+                    if (teams.length === 2) {
+                        const t1 = teams[0].trim();
+                        const t2 = teams[1].trim();
+                        
+                        const apiMatch = data.matches.find(m => {
+                            const apiHome = translateTeam(m.team1);
+                            const apiAway = translateTeam(m.team2);
+                            return (apiHome === t1 && apiAway === t2) || (apiHome === t2 && apiAway === t1);
+                        });
+
+                        if (apiMatch && apiMatch.score && apiMatch.score.ft) {
+                            const scoreStr = `${apiMatch.score.ft[0]}-${apiMatch.score.ft[1]}`;
+                            matchObj.score = scoreStr;
+                            provisionalMatches.add(`${stage.key}:${matchKey}`);
+                        }
+                    }
+                }
+            });
+        });
+
+        // 3. Loop over single K.O. matches (r3_4_match, final_match)
+        const singleMatches = [
+            { key: 'r3_4_match', data: results.r3_4_match },
+            { key: 'final_match', data: results.final_match }
+        ];
+
+        singleMatches.forEach(sm => {
+            const matchObj = sm.data;
+            if (matchObj && matchObj.matchup && (!matchObj.score || matchObj.score.trim() === "")) {
+                const teams = matchObj.matchup.split('-');
+                if (teams.length === 2) {
+                    const t1 = teams[0].trim();
+                    const t2 = teams[1].trim();
+                    
+                    const apiMatch = data.matches.find(m => {
+                        const apiHome = translateTeam(m.team1);
+                        const apiAway = translateTeam(m.team2);
+                        return (apiHome === t1 && apiAway === t2) || (apiHome === t2 && apiAway === t1);
+                    });
+
+                    if (apiMatch && apiMatch.score && apiMatch.score.ft) {
+                        const scoreStr = `${apiMatch.score.ft[0]}-${apiMatch.score.ft[1]}`;
+                        matchObj.score = scoreStr;
+                        provisionalMatches.add(`single:${sm.key}`);
+                    }
+                }
+            }
+        });
+
+        console.log(`Loaded ${provisionalMatches.size} provisional matches dynamically from API.`);
+
+    } catch (error) {
+        console.error("Error loading live results from API:", error);
+    }
+}
+
+// Calculate points evolution data for the chart
+function getPointsEvolutionData() {
+    if (!porraData || !results) return null;
+
+    // 1. Get all matches that have a recorded score in results.matches
+    const playedMatches = porraData.matches
+        .filter(m => results.matches[m.id] && results.matches[m.id].trim() !== "")
+        .sort((a, b) => {
+            const dateA = new Date(a.fecha.replace(/-/g, "/"));
+            const dateB = new Date(b.fecha.replace(/-/g, "/"));
+            return dateA - dateB;
+        });
+
+    if (playedMatches.length === 0) return null;
+
+    // 2. Initialize cumulative points array for each player
+    const playersEvolution = {};
+    porraData.players.forEach(p => {
+        playersEvolution[p] = [0.0]; // Starts at 0 points
+    });
+
+    // 3. For each played match, calculate cumulative points
+    const runningScores = {};
+    porraData.players.forEach(p => {
+        runningScores[p] = 0.0;
+    });
+
+    playedMatches.forEach(m => {
+        const matchKey = `${m.casa}-${m.fuera}`;
+        const actualScore = results.matches[m.id];
+
+        porraData.players.forEach(p => {
+            const pred = porraData.predictions[p].group_stage[matchKey];
+            const outcome = calcOutcomePoints(actualScore, pred);
+            const netPointsWon = outcome.points / 2.0;
+
+            runningScores[p] += netPointsWon;
+            playersEvolution[p].push(Number(runningScores[p].toFixed(1)));
+        });
+    });
+
+    // 4. Generate labels: "Inicio", "P1", "P2", ...
+    const labels = ["Inicio"];
+    playedMatches.forEach((m, idx) => {
+        labels.push(`P${idx + 1}`);
+    });
+
+    return {
+        labels: labels,
+        playersEvolution: playersEvolution,
+        playedMatches: playedMatches
+    };
+}
+
+// Get player unique color for evolution line chart
+function getPlayerColor(name, index) {
+    const predefined = {
+        "Endika": "hsl(190, 95%, 45%)",
+        "Rodri": "hsl(263, 90%, 60%)",
+        "Koldo": "hsl(142, 72%, 45%)",
+        "Joel": "hsl(38, 92%, 50%)",
+        "ALVARO": "hsl(328, 80%, 55%)",
+        "Imanol": "hsl(200, 90%, 55%)",
+        "André": "hsl(280, 80%, 65%)",
+        "Raul": "hsl(15, 90%, 55%)"
+    };
+    if (predefined[name]) return predefined[name];
+    // Fallback: cycle through HSL colors
+    const hue = (index * 45) % 360;
+    return `hsl(${hue}, 85%, 55%)`;
+}
+
+// Render the Points Evolution Chart using Chart.js
+function renderEvolutionChart() {
+    const chartData = getPointsEvolutionData();
+    const ctx = document.getElementById('points-evolution-chart');
+    if (!ctx) return;
+
+    if (!chartData) {
+        // Show a message on the canvas if no matches have been played yet
+        ctx.style.display = 'none';
+        let emptyMsg = document.getElementById('chart-empty-message');
+        if (!emptyMsg) {
+            emptyMsg = document.createElement('div');
+            emptyMsg.id = 'chart-empty-message';
+            emptyMsg.style.textAlign = 'center';
+            emptyMsg.style.padding = '3rem';
+            emptyMsg.style.color = 'var(--text-muted)';
+            emptyMsg.style.fontFamily = 'var(--font-heading)';
+            emptyMsg.innerHTML = '<i class="fa-solid fa-chart-line" style="font-size: 2.5rem; margin-bottom: 1rem; display: block; color: var(--border-color)"></i>No hay partidos jugados aún para mostrar la evolución de puntos.';
+            ctx.parentNode.appendChild(emptyMsg);
+        } else {
+            emptyMsg.style.display = 'block';
+        }
+        return;
+    }
+
+    // Hide empty message if it exists
+    const emptyMsg = document.getElementById('chart-empty-message');
+    if (emptyMsg) emptyMsg.style.display = 'none';
+    ctx.style.display = 'block';
+
+    // Destroy old instance if it exists to prevent canvas reuse issues
+    if (evolutionChart) {
+        evolutionChart.destroy();
+    }
+
+    // Build datasets
+    const datasets = Object.entries(chartData.playersEvolution).map(([playerName, scores], idx) => {
+        const color = getPlayerColor(playerName, idx);
+        return {
+            label: playerName,
+            data: scores,
+            borderColor: color,
+            backgroundColor: color.replace(')', ', 0.05)').replace('hsl', 'hsla'),
+            borderWidth: 3,
+            pointRadius: 2,
+            pointHoverRadius: 6,
+            tension: 0.3, // Soft curves
+            fill: false
+        };
+    });
+
+    // Configure Chart.js options
+    const options = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'top',
+                labels: {
+                    color: '#94a3b8',
+                    font: {
+                        family: 'Outfit',
+                        weight: '600',
+                        size: 11
+                    },
+                    padding: 12,
+                    usePointStyle: true,
+                    pointStyle: 'circle'
+                }
+            },
+            tooltip: {
+                backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                titleColor: '#fff',
+                titleFont: {
+                    family: 'Outfit',
+                    weight: 'bold',
+                    size: 12
+                },
+                bodyColor: '#f8fafc',
+                bodyFont: {
+                    family: 'Inter',
+                    size: 12
+                },
+                borderColor: 'rgba(255, 255, 255, 0.12)',
+                borderWidth: 1,
+                padding: 10,
+                cornerRadius: 8,
+                callbacks: {
+                    title: function(context) {
+                        const idx = context[0].dataIndex;
+                        if (idx === 0) return "Inicio del Torneo";
+                        const match = chartData.playedMatches[idx - 1];
+                        return `P${idx}: ${match.casa} vs ${match.fuera}`;
+                    },
+                    label: function(context) {
+                        return ` ${context.dataset.label}: ${context.raw.toFixed(1)} pts`;
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                grid: {
+                    color: 'rgba(255, 255, 255, 0.04)',
+                    drawBorder: false
+                },
+                ticks: {
+                    color: '#94a3b8',
+                    font: {
+                        family: 'Inter',
+                        size: 10
+                    }
+                }
+            },
+            y: {
+                grid: {
+                    color: 'rgba(255, 255, 255, 0.04)',
+                    drawBorder: false
+                },
+                ticks: {
+                    color: '#94a3b8',
+                    font: {
+                        family: 'Inter',
+                        size: 10
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Puntos Netos',
+                    color: '#94a3b8',
+                    font: {
+                        family: 'Outfit',
+                        weight: '600',
+                        size: 11
+                    }
+                }
+            }
+        }
+    };
+
+    evolutionChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: chartData.labels,
+            datasets: datasets
+        },
+        options: options
+    });
+}
+

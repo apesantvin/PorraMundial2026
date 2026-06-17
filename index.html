@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Porra Mundial 2026 🏆</title>
+    <!-- Favicon: Trophy emoji SVG -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2280%22>🏆</text></svg>">
+    <!-- Google Fonts: Outfit (headings) & Inter (body text) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <div class="logo">
+                <span class="trophy-emoji">🏆</span>
+                <h1>Porra Mundial 2026</h1>
+            </div>
+            <nav class="app-nav">
+                <button class="nav-btn active" data-tab="clasificacion">
+                    <i class="fa-solid fa-ranking-star"></i> Clasificación
+                </button>
+                <button class="nav-btn" data-tab="partidos">
+                    <i class="fa-solid fa-circle-play"></i> Partidos
+                </button>
+                <button class="nav-btn" data-tab="reglas">
+                    <i class="fa-solid fa-book-open"></i> Reglas de Puntuación
+                </button>
+                <button class="nav-btn" data-tab="admin">
+                    <i class="fa-solid fa-sliders"></i> Admin
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <main class="app-main">
+        <!-- 🏆 CLASIFICACIÓN TAB -->
+        <section id="clasificacion" class="tab-content active">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Clasificación General</h2>
+                    <span class="badge" id="matches-played-badge">0 / 72 Partidos Jugados</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table" id="standings-table">
+                        <thead>
+                            <tr>
+                                <th class="text-center">Pos</th>
+                                <th>Jugador</th>
+                                <th class="text-center">Pts Totales</th>
+                                <th class="text-center">F. Grupos</th>
+                                <th class="text-center">Pos. Grupos</th>
+                                <th class="text-center">Fases K.O.</th>
+                                <th class="text-center">Cuadro Honor</th>
+                            </tr>
+                        </thead>
+                        <tbody id="standings-body">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card margin-top">
+                <div class="card-header">
+                    <h2>Evolución de la Clasificación</h2>
+                    <span class="badge">Puntos Netos Acumulados</span>
+                </div>
+                <div class="chart-container" style="position: relative; height: 350px; width: 100%;">
+                    <canvas id="points-evolution-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- ⚽ PARTIDOS TAB -->
+        <section id="partidos" class="tab-content">
+            <div class="filter-bar">
+                <div class="filters">
+                    <button class="filter-btn active" data-filter="all">Todos</button>
+                    <button class="filter-btn" data-filter="J1">Jornada 1</button>
+                    <button class="filter-btn" data-filter="J2">Jornada 2</button>
+                    <button class="filter-btn" data-filter="J3">Jornada 3</button>
+                </div>
+                <div class="admin-edit-toggle-container">
+                    <button class="btn btn-secondary" id="enable-edit-btn">
+                        <i class="fa-solid fa-lock"></i> Modo Edición (Admin)
+                    </button>
+                </div>
+            </div>
+
+            <div class="matches-grid" id="matches-grid">
+                <!-- Populated dynamically via JS -->
+            </div>
+        </section>
+
+        <!-- 📐 REGLAS TAB -->
+        <section id="reglas" class="tab-content">
+            <div class="grid grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>¿Cómo se calculan los puntos?</h2>
+                    </div>
+                    <div class="rules-list">
+                        <div class="rule-item">
+                            <div class="rule-points">+1.0 pt</div>
+                            <div class="rule-text">
+                                <strong>Signo 1X2 Correcto:</strong>
+                                <p>Acertar qué equipo gana (1 o 2) o si empatan (X).</p>
+                            </div>
+                        </div>
+                        <div class="rule-item">
+                            <div class="rule-points">+1.0 pt</div>
+                            <div class="rule-text">
+                                <strong>Diferencia de Goles Correcta:</strong>
+                                <p>Acertar la diferencia exacta de goles entre ambos equipos (sólo si se acierta también el signo 1X2).</p>
+                            </div>
+                        </div>
+                        <div class="rule-item">
+                            <div class="rule-points">+2.0 pts</div>
+                            <div class="rule-text">
+                                <strong>Marcador Exacto Correcto:</strong>
+                                <p>Acertar la cantidad de goles de cada equipo exactamente.</p>
+                            </div>
+                        </div>
+                        <div class="rule-item divider-rule">
+                            <div class="rule-points">/2</div>
+                            <div class="rule-text">
+                                <strong>Divisor Global (Neto):</strong>
+                                <p>Los puntos obtenidos en los partidos se dividen por 2 al final, por lo que un acierto exacto equivale a <strong>2.0 puntos netos</strong> para la clasificación general.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Ejemplos Prácticos</h2>
+                    </div>
+                    <div class="examples-list">
+                        <div class="example-item success">
+                            <div class="example-title"><i class="fa-solid fa-check-double"></i> Acierto Exacto (4.0 pts brutos = 2.0 pts netos)</div>
+                            <p><strong>Predicción:</strong> 2 - 0 | <strong>Resultado Real:</strong> 2 - 0</p>
+                            <span class="explanation">Se acierta signo (1 pt) + diferencia (+2 de dif, 1 pt) + marcador exacto (2 pts) = 4 pts.</span>
+                        </div>
+                        <div class="example-item primary">
+                            <div class="example-title"><i class="fa-solid fa-check"></i> Acierto Parcial (2.0 pts brutos = 1.0 pt neto)</div>
+                            <p><strong>Predicción:</strong> 2 - 1 | <strong>Resultado Real:</strong> 1 - 0</p>
+                            <span class="explanation">Se acierta signo (gana local, 1 pt) + diferencia (+1 de dif, 1 pt) = 2 pts.</span>
+                        </div>
+                        <div class="example-item warning">
+                            <div class="example-title"><i class="fa-solid fa-minus"></i> Acierto Mínimo (1.0 pt bruto = 0.5 pt neto)</div>
+                            <p><strong>Predicción:</strong> 3 - 0 | <strong>Resultado Real:</strong> 2 - 1</p>
+                            <span class="explanation">Se acierta signo (gana local, 1 pt). La diferencia (+3 vs +1) y marcador son incorrectos = 1 pt.</span>
+                        </div>
+                        <div class="example-item danger">
+                            <div class="example-title"><i class="fa-solid fa-xmark"></i> Fallo Completo (0.0 pts)</div>
+                            <p><strong>Predicción:</strong> 1 - 1 | <strong>Resultado Real:</strong> 0 - 2</p>
+                            <span class="explanation">No se acierta el signo = 0 pts.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card margin-top">
+                <div class="card-header">
+                    <h2>Puntuación de Rondas K.O. y Posiciones</h2>
+                </div>
+                <div class="rules-table-grid">
+                    <div class="rules-table-card">
+                        <h3>Fase de Grupos (Clasificados y Posición)</h3>
+                        <ul>
+                            <li><strong>Posición exacta de grupo (1º o 2º):</strong> 2 pts (1.0 pt neto)</li>
+                            <li><strong>Posición exacta de grupo (3º o 4º):</strong> 1 pt (0.5 pt neto)</li>
+                            <li><strong>Clasificado a Dieciseisavos:</strong> 1 pt (0.5 pt neto)</li>
+                        </ul>
+                    </div>
+                    <div class="rules-table-card">
+                        <h3>Fases de Eliminación (K.O.)</h3>
+                        <ul>
+                            <li><strong>Resultados Rondas (1/16, 1/8, 1/4, 1/2, Final):</strong> Mismo cálculo de partido (Signo 1X2 + Dif + Exacto).</li>
+                            <li><strong>Equipo clasificado a Octavos:</strong> 1 pt (0.5 pt neto)</li>
+                            <li><strong>Equipo clasificado a Cuartos:</strong> 1 pt (0.5 pt neto)</li>
+                            <li><strong>Equipo clasificado a Semifinales:</strong> 1 pt (0.5 pt neto)</li>
+                            <li><strong>Equipo clasificado a la Final:</strong> 2 pts (1.0 pt neto)</li>
+                        </ul>
+                    </div>
+                    <div class="rules-table-card">
+                        <h3>Cuadro de Honor (Especiales)</h3>
+                        <ul>
+                            <li><strong>Acertar Campeón:</strong> 10 pts (5.0 pts netos)</li>
+                            <li><strong>Acertar Subcampeón:</strong> 6 pts (3.0 pts netos)</li>
+                            <li><strong>Acertar 3º Puesto:</strong> 4 pts (2.0 pts netos)</li>
+                            <li><strong>Acertar 4º Puesto:</strong> 2 pts (1.0 pt neto)</li>
+                            <li><strong>Máximo Goleador, Portero o MVP:</strong> 1 pt (0.5 pt neto) c/u</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ⚙️ ADMIN PANEL -->
+        <section id="admin" class="tab-content">
+            <div style="max-width: 650px; margin: 0 auto;">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Acciones de Administración</h2>
+                    </div>
+                    <div class="admin-server-actions">
+                        <div class="status-box info">
+                            <h4><i class="fa-solid fa-circle-info"></i> ¿Cómo actualizar los resultados oficiales?</h4>
+                            <p>Dado que hospedas la aplicación en GitHub Pages de forma estática, puedes actualizar los resultados siguiendo estos sencillos pasos:</p>
+                            <ol>
+                                <li>Ve a la pestaña <strong>Partidos</strong> y activa el <strong>Modo Edición (Admin)</strong>.</li>
+                                <li>Rellena o modifica los marcadores de los partidos y/o las eliminatorias directamente en las tarjetas de los partidos.</li>
+                                <li>Si quieres consolidar resultados cargados temporalmente en vivo por la API, pulsa el botón <strong>Hacer Oficiales Resultados de API</strong> de abajo.</li>
+                                <li>Pulsa <strong>Descargar results.json</strong> para obtener el archivo actualizado.</li>
+                                <li>Sube el archivo descargado a la raíz de tu repositorio en GitHub para que todos los participantes vean la clasificación actualizada.</li>
+                            </ol>
+                        </div>
+
+                        <div class="admin-buttons-stack">
+                            <button class="btn btn-accent btn-large" id="download-json-btn">
+                                <i class="fa-solid fa-download"></i> Descargar results.json
+                            </button>
+
+                            <button class="btn btn-secondary btn-large" id="approve-provisional-btn" style="background: rgba(16, 185, 129, 0.1); color: var(--color-success); border-color: rgba(16, 185, 129, 0.2);">
+                                <i class="fa-solid fa-circle-check"></i> Hacer Oficiales Resultados de API
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- PLAYER DETAIL MODAL / DRAWER -->
+    <div class="modal-overlay" id="player-modal">
+        <div class="modal-container">
+            <button class="modal-close" id="modal-close-btn">&times;</button>
+            <div class="modal-header">
+                <h3 id="modal-player-name">Detalle de Puntos - Jugador</h3>
+                <div class="modal-score-summary">
+                    <span class="modal-total-score" id="modal-total-score">0.0 pts</span>
+                    <span class="modal-fase-score" id="modal-fase-score">Fase Grupos: 0.0 pts</span>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="tabs-sub">
+                    <button class="tab-sub-btn active" data-subtab="modal-groups">Fase de Grupos</button>
+                    <button class="tab-sub-btn" data-subtab="modal-elimination">Fases K.O. y Especiales</button>
+                </div>
+                
+                <div class="modal-tab-content active" id="modal-groups">
+                    <div class="table-responsive">
+                        <table class="table table-compact">
+                            <thead>
+                                <tr>
+                                    <th>Partido</th>
+                                    <th class="text-center">Predicción</th>
+                                    <th class="text-center">Real</th>
+                                    <th class="text-center">Pts brutos</th>
+                                    <th class="text-center">Pts netos</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modal-groups-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="modal-tab-content" id="modal-elimination">
+                    <div class="ko-predictions-list" id="modal-ko-list">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="app-footer">
+        <div class="footer-container">
+            <p>Organizador del Mundial 2026 - Versión Web 1.0. Desarrollado con ❤️ para despliegue en GitHub Pages.</p>
+        </div>
+    </footer>
+
+    <!-- Chart.js for points evolution chart -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
