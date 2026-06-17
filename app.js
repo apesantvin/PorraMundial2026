@@ -1226,176 +1226,355 @@ function getMatchupFlagsHtml(matchupStr) {
     return `${getFlagHtml(t1)} ${t1} - ${t2} ${getFlagHtml(t2)}`;
 }
 
-// Fetch live World Cup match results dynamically from openfootball public API
-async function loadLiveResults() {
+// Fetch live World Cup match results dynamically from football-data.org API via CORS proxy
+const TEAM_TRANSLATIONS = {
+    'mexico': 'México',
+    'south africa': 'Sudáfrica',
+    'south korea': 'Corea del Sur',
+    'korea republic': 'Corea del Sur',
+    'czech republic': 'República Checa',
+    'czechia': 'República Checa',
+    'canada': 'Canadá',
+    'bosnia & herzegovina': 'Bosnia y Herzegovina',
+    'bosnia and herzegovina': 'Bosnia y Herzegovina',
+    'qatar': 'Catar',
+    'switzerland': 'Suiza',
+    'brazil': 'Brasil',
+    'morocco': 'Marruecos',
+    'haiti': 'Haití',
+    'scotland': 'Escocia',
+    'united states': 'Estados Unidos',
+    'usa': 'Estados Unidos',
+    'paraguay': 'Paraguay',
+    'australia': 'Australia',
+    'turkiye': 'Turquía',
+    'turkey': 'Turquía',
+    'germany': 'Alemania',
+    'curacao': 'Curazao',
+    'curaçao': 'Curazao',
+    'cote d\'ivoire': 'Costa de Marfil',
+    'ivory coast': 'Costa de Marfil',
+    'ecuador': 'Ecuador',
+    'netherlands': 'Países Bajos',
+    'japan': 'Japón',
+    'sweden': 'Suecia',
+    'tunisia': 'Túnez',
+    'belgium': 'Bélgica',
+    'egypt': 'Egipto',
+    'ir iran': 'Irán',
+    'iran': 'Irán',
+    'new zealand': 'Nueva Zelanda',
+    'spain': 'España',
+    'cabo verde': 'Cabo Verde',
+    'cape verde': 'Cabo Verde',
+    'saudi arabia': 'Arabia Saudita',
+    'uruguay': 'Uruguay',
+    'france': 'Francia',
+    'senegal': 'Senegal',
+    'iraq': 'Irak',
+    'norway': 'Noruega',
+    'argentina': 'Argentina',
+    'algeria': 'Argelia',
+    'austria': 'Austria',
+    'jordan': 'Jordania',
+    'portugal': 'Portugal',
+    'congo dr': 'RD Congo',
+    'dr congo': 'RD Congo',
+    'uzbekistan': 'Uzbekistán',
+    'colombia': 'Colombia',
+    'england': 'Inglaterra',
+    'croatia': 'Croacia',
+    'ghana': 'Ghana',
+    'panama': 'Panamá'
+};
+
+function translateTeam(name) {
+    if (!name) return "";
+    const clean = name.trim().toLowerCase();
+    return TEAM_TRANSLATIONS[clean] || name;
+}
+
+const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED"]);
+
+async function fetchAndProcessLiveResults() {
+    const apiKey = 'fca19012e1774fee9c2d4382feb0325b';
+    const targetUrl = 'https://api.football-data.org/v4/competitions/WC/matches';
+    const reqHeadersStr = `X-Auth-Token:${apiKey}`;
+    const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}&reqHeaders=${encodeURIComponent(reqHeadersStr)}`;
+
+    console.log("Fetching live results from football-data.org via corsproxy.io...");
     try {
-        console.log("Fetching live results from openfootball API...");
-        const response = await fetch('https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json');
+        const response = await fetch(proxyUrl);
         if (!response.ok) {
-            console.warn("Failed to fetch live results from openfootball API");
-            return;
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-        const data = await response.json();
-        if (!data || !data.matches) return;
+        
+        const resData = await response.json();
+        const matches = resData.matches;
+        if (!matches || matches.length === 0) {
+            console.log("No matches returned by the API.");
+            return false;
+        }
 
-        // Translation dictionary English -> Spanish
-        const TEAM_TRANSLATIONS = {
-            'mexico': 'México',
-            'south africa': 'Sudáfrica',
-            'south korea': 'Corea del Sur',
-            'korea republic': 'Corea del Sur',
-            'czech republic': 'República Checa',
-            'czechia': 'República Checa',
-            'canada': 'Canadá',
-            'bosnia & herzegovina': 'Bosnia y Herzegovina',
-            'bosnia and herzegovina': 'Bosnia y Herzegovina',
-            'qatar': 'Catar',
-            'switzerland': 'Suiza',
-            'brazil': 'Brasil',
-            'morocco': 'Marruecos',
-            'haiti': 'Haití',
-            'scotland': 'Escocia',
-            'united states': 'Estados Unidos',
-            'usa': 'Estados Unidos',
-            'paraguay': 'Paraguay',
-            'australia': 'Australia',
-            'turkiye': 'Turquía',
-            'turkey': 'Turquía',
-            'germany': 'Alemania',
-            'curacao': 'Curazao',
-            'curaçao': 'Curazao',
-            'cote d\'ivoire': 'Costa de Marfil',
-            'ivory coast': 'Costa de Marfil',
-            'ecuador': 'Ecuador',
-            'netherlands': 'Países Bajos',
-            'japan': 'Japón',
-            'sweden': 'Suecia',
-            'tunisia': 'Túnez',
-            'belgium': 'Bélgica',
-            'egypt': 'Egipto',
-            'ir iran': 'Irán',
-            'iran': 'Irán',
-            'new zealand': 'Nueva Zelanda',
-            'spain': 'España',
-            'cabo verde': 'Cabo Verde',
-            'cape verde': 'Cabo Verde',
-            'saudi arabia': 'Arabia Saudita',
-            'uruguay': 'Uruguay',
-            'france': 'Francia',
-            'senegal': 'Senegal',
-            'iraq': 'Irak',
-            'norway': 'Noruega',
-            'argentina': 'Argentina',
-            'algeria': 'Argelia',
-            'austria': 'Austria',
-            'jordan': 'Jordania',
-            'portugal': 'Portugal',
-            'congo dr': 'RD Congo',
-            'dr congo': 'RD Congo',
-            'uzbekistan': 'Uzbekistán',
-            'colombia': 'Colombia',
-            'england': 'Inglaterra',
-            'croatia': 'Croacia',
-            'ghana': 'Ghana',
-            'panama': 'Panamá'
-        };
+        console.log(`Retrieved ${matches.length} matches from API. Processing...`);
 
-        const translateTeam = (name) => {
-            if (!name) return "";
-            const clean = name.trim().toLowerCase();
-            return TEAM_TRANSLATIONS[clean] || name;
-        };
+        // Capture previous JSON state to check if anything changed
+        const prevResultsJSON = JSON.stringify(results);
 
-        // 1. For each match in the API data (Group Stage)
-        data.matches.forEach(apiMatch => {
-            if (apiMatch.score && apiMatch.score.ft) {
-                const apiHome = translateTeam(apiMatch.team1);
-                const apiAway = translateTeam(apiMatch.team2);
-                const scoreStr = `${apiMatch.score.ft[0]}-${apiMatch.score.ft[1]}`;
+        // Keep track of previously marked provisional matches
+        const prevProvisionalMatches = Array.from(provisionalMatches);
+        provisionalMatches.clear();
 
-                // Find corresponding match in local porraData
-                const localMatch = porraData.matches.find(m => 
-                    (m.casa === apiHome && m.fuera === apiAway) ||
-                    (m.casa === apiAway && m.fuera === apiHome)
-                );
+        const now = Date.now();
+        let changed = false;
 
-                if (localMatch) {
-                    const matchIdStr = String(localMatch.id);
-                    // Only overwrite if it is not already filled in results.json (fixed by admin)
-                    if (!results.matches[matchIdStr] || results.matches[matchIdStr].trim() === "") {
-                        results.matches[matchIdStr] = scoreStr;
-                        provisionalMatches.add(matchIdStr);
-                    }
-                }
+        // Helper to add qualified teams if missing
+        function addQualified(arr, team) {
+            if (team && !arr.includes(team)) {
+                arr.push(team);
+                changed = true;
+                return true;
             }
-        });
+            return false;
+        }
 
-        // 2. Loop over K.O. stage matches
-        const koStages = [
-            { key: 'r32_matches', data: results.r32_matches },
-            { key: 'r16_matches', data: results.r16_matches },
-            { key: 'r8_matches', data: results.r8_matches },
-            { key: 'r4_matches', data: results.r4_matches }
-        ];
-
-        koStages.forEach(stage => {
-            if (!stage.data) return;
-            Object.entries(stage.data).forEach(([matchKey, matchObj]) => {
-                if (matchObj && matchObj.matchup && (!matchObj.score || matchObj.score.trim() === "")) {
-                    const teams = matchObj.matchup.split('-');
+        // Helper to update K.O. match scores
+        function updateKOStageMatches(stageMatches, t1, t2, score) {
+            let updated = false;
+            for (const [key, matchObj] of Object.entries(stageMatches)) {
+                if (matchObj && matchObj.matchup) {
+                    const teams = matchObj.matchup.split('-').map(t => t.trim());
                     if (teams.length === 2) {
-                        const t1 = teams[0].trim();
-                        const t2 = teams[1].trim();
-                        
-                        const apiMatch = data.matches.find(m => {
-                            const apiHome = translateTeam(m.team1);
-                            const apiAway = translateTeam(m.team2);
-                            return (apiHome === t1 && apiAway === t2) || (apiHome === t2 && apiAway === t1);
-                        });
-
-                        if (apiMatch && apiMatch.score && apiMatch.score.ft) {
-                            const scoreStr = `${apiMatch.score.ft[0]}-${apiMatch.score.ft[1]}`;
-                            matchObj.score = scoreStr;
-                            provisionalMatches.add(`${stage.key}:${matchKey}`);
+                        if ((teams[0] === t1 && teams[1] === t2) || (teams[0] === t2 && teams[1] === t1)) {
+                            if (matchObj.score !== score) {
+                                matchObj.score = score;
+                                updated = true;
+                                changed = true;
+                            }
                         }
                     }
                 }
-            });
-        });
+            }
+            return updated;
+        }
 
-        // 3. Loop over single K.O. matches (r3_4_match, final_match)
-        const singleMatches = [
-            { key: 'r3_4_match', data: results.r3_4_match },
-            { key: 'final_match', data: results.final_match }
-        ];
+        matches.forEach(item => {
+            const home = translateTeam(item.homeTeam.shortName || item.homeTeam.name);
+            const away = translateTeam(item.awayTeam.shortName || item.awayTeam.name);
+            
+            const goalsHome = item.score && item.score.fullTime ? item.score.fullTime.home : null;
+            const goalsAway = item.score && item.score.fullTime ? item.score.fullTime.away : null;
+            
+            const status = item.status;
+            const roundLower = (item.stage || "").toLowerCase();
+            const matchDate = new Date(item.utcDate).getTime();
 
-        singleMatches.forEach(sm => {
-            const matchObj = sm.data;
-            if (matchObj && matchObj.matchup && (!matchObj.score || matchObj.score.trim() === "")) {
-                const teams = matchObj.matchup.split('-');
-                if (teams.length === 2) {
-                    const t1 = teams[0].trim();
-                    const t2 = teams[1].trim();
-                    
-                    const apiMatch = data.matches.find(m => {
-                        const apiHome = translateTeam(m.team1);
-                        const apiAway = translateTeam(m.team2);
-                        return (apiHome === t1 && apiAway === t2) || (apiHome === t2 && apiAway === t1);
-                    });
+            const isLive = LIVE_STATUSES.has(status);
+            const isFinished = (status === 'FINISHED');
+            const isPlayedOrLive = (goalsHome !== null && goalsAway !== null);
+            const scoreStr = isPlayedOrLive ? `${goalsHome}-${goalsAway}` : "";
 
-                    if (apiMatch && apiMatch.score && apiMatch.score.ft) {
-                        const scoreStr = `${apiMatch.score.ft[0]}-${apiMatch.score.ft[1]}`;
-                        matchObj.score = scoreStr;
-                        provisionalMatches.add(`single:${sm.key}`);
+            // Check if the match has finished very recently (within last 4 hours)
+            const isRecentFinished = isFinished && ((now - matchDate) <= 4 * 60 * 60 * 1000);
+
+            let matchId = "";
+            let currentScore = "";
+
+            if (roundLower.includes('group')) {
+                const localMatch = porraData.matches.find(m => 
+                    (m.casa === home && m.fuera === away) || (m.casa === away && m.fuera === home)
+                );
+                if (localMatch) {
+                    matchId = String(localMatch.id);
+                    currentScore = (officialResults && officialResults.matches) ? (officialResults.matches[matchId] || "") : "";
+                }
+            } else {
+                let stageMatches = null;
+                let keyPrefix = "";
+                if (roundLower.includes('32') || roundLower.includes('last_32')) { stageMatches = results.r32_matches; keyPrefix = "r32_matches"; }
+                else if (roundLower.includes('16') || roundLower.includes('last_16')) { stageMatches = results.r16_matches; keyPrefix = "r16_matches"; }
+                else if (roundLower.includes('quarter')) { stageMatches = results.r8_matches; keyPrefix = "r8_matches"; }
+                else if (roundLower.includes('semi')) { stageMatches = results.r4_matches; keyPrefix = "r4_matches"; }
+                else if (roundLower.includes('third') || roundLower.includes('bronze') || roundLower.includes('3')) { stageMatches = { "r3_4_match": results.r3_4_match }; keyPrefix = "single"; }
+                else if (roundLower.includes('final')) { stageMatches = { "final_match": results.final_match }; keyPrefix = "single"; }
+
+                if (stageMatches) {
+                    for (const [key, matchObj] of Object.entries(stageMatches)) {
+                        if (matchObj && matchObj.matchup) {
+                            const teams = matchObj.matchup.split('-').map(t => t.trim());
+                            if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
+                                matchId = (keyPrefix === "single") ? `single:${key}` : `${keyPrefix}:${key}`;
+                                if (officialResults) {
+                                    if (keyPrefix === "single") {
+                                        currentScore = (officialResults[key] && officialResults[key].score) || "";
+                                    } else if (officialResults[keyPrefix] && officialResults[keyPrefix][key]) {
+                                        currentScore = officialResults[keyPrefix][key].score || "";
+                                    }
+                                }
+                                break;
+                            }
+                        }
                     }
+                }
+            }
+
+            if (!matchId) return;
+
+            const wasProvisional = prevProvisionalMatches.includes(matchId);
+
+            // We update the score in memory if:
+            // 1. We don't have a score loaded officially yet (currentScore is empty)
+            // 2. OR the match is currently live
+            // 3. OR the match was marked as provisional (so we need to capture the final score if it transitioned to finished)
+            // 4. OR the match finished recently
+            const shouldProcess = (currentScore.trim() === "") || isLive || wasProvisional || isRecentFinished;
+
+            if (!shouldProcess) {
+                return;
+            }
+
+            const homeWon = item.score && item.score.winner === 'HOME_TEAM';
+            const awayWon = item.score && item.score.winner === 'AWAY_TEAM';
+
+            if (roundLower.includes('group')) {
+                if (results.matches[matchId] !== scoreStr && scoreStr !== "") {
+                    results.matches[matchId] = scoreStr;
+                    console.log(`Updated Match ${matchId} (${home} ${scoreStr} ${away}) [Status: ${status}]`);
+                    changed = true;
+                }
+
+                // Track as provisional if currently in progress
+                if (isLive) {
+                    provisionalMatches.add(matchId);
+                }
+            } else {
+                // K.O. stages
+                let isStageMatchUpdated = false;
+                let koKey = "";
+
+                if (roundLower.includes('32') || roundLower.includes('last_32')) {
+                    addQualified(results.r32_teams, home);
+                    addQualified(results.r32_teams, away);
+                    if (isPlayedOrLive) {
+                        isStageMatchUpdated = updateKOStageMatches(results.r32_matches, home, away, scoreStr);
+                        koKey = matchId;
+                        if (homeWon) addQualified(results.r16_teams, home);
+                        if (awayWon) addQualified(results.r16_teams, away);
+                    }
+                } else if (roundLower.includes('16') || roundLower.includes('last_16')) {
+                    addQualified(results.r16_teams, home);
+                    addQualified(results.r16_teams, away);
+                    if (isPlayedOrLive) {
+                        isStageMatchUpdated = updateKOStageMatches(results.r16_matches, home, away, scoreStr);
+                        koKey = matchId;
+                        if (homeWon) addQualified(results.r8_teams, home);
+                        if (awayWon) addQualified(results.r8_teams, away);
+                    }
+                } else if (roundLower.includes('quarter')) {
+                    addQualified(results.r8_teams, home);
+                    addQualified(results.r8_teams, away);
+                    if (isPlayedOrLive) {
+                        isStageMatchUpdated = updateKOStageMatches(results.r8_matches, home, away, scoreStr);
+                        koKey = matchId;
+                        if (homeWon) addQualified(results.r4_teams, home);
+                        if (awayWon) addQualified(results.r4_teams, away);
+                    }
+                } else if (roundLower.includes('semi')) {
+                    addQualified(results.r4_teams, home);
+                    addQualified(results.r4_teams, away);
+                    if (isPlayedOrLive) {
+                        isStageMatchUpdated = updateKOStageMatches(results.r4_matches, home, away, scoreStr);
+                        koKey = matchId;
+                        if (homeWon) {
+                            addQualified(results.final_teams, home);
+                            addQualified(results.r3_4_teams, away);
+                        }
+                        if (awayWon) {
+                            addQualified(results.final_teams, away);
+                            addQualified(results.r3_4_teams, home);
+                        }
+                    }
+                } else if (roundLower.includes('third') || roundLower.includes('bronze') || roundLower.includes('3')) {
+                    addQualified(results.r3_4_teams, home);
+                    addQualified(results.r3_4_teams, away);
+                    if (isPlayedOrLive) {
+                        const matchupStr = results.r3_4_match.matchup;
+                        const teams = matchupStr.split('-').map(t => t.trim());
+                        if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
+                            if (results.r3_4_match.score !== scoreStr) {
+                                results.r3_4_match.score = scoreStr;
+                                isStageMatchUpdated = true;
+                                changed = true;
+                            }
+                            koKey = matchId;
+                        }
+                        if (isFinished) {
+                            if (homeWon) {
+                                results.honor_3rd = home;
+                                results.honor_4th = away;
+                                changed = true;
+                            } else if (awayWon) {
+                                results.honor_3rd = away;
+                                results.honor_4th = home;
+                                changed = true;
+                            }
+                        }
+                    }
+                } else if (roundLower.includes('final')) {
+                    addQualified(results.final_teams, home);
+                    addQualified(results.final_teams, away);
+                    if (isPlayedOrLive) {
+                        const matchupStr = results.final_match.matchup;
+                        const teams = matchupStr.split('-').map(t => t.trim());
+                        if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
+                            if (results.final_match.score !== scoreStr) {
+                                results.final_match.score = scoreStr;
+                                isStageMatchUpdated = true;
+                                changed = true;
+                            }
+                            koKey = matchId;
+                        }
+                        if (isFinished) {
+                            if (homeWon) {
+                                  results.honor_champ = home;
+                                  results.honor_runner = away;
+                                  changed = true;
+                            } else if (awayWon) {
+                                  results.honor_champ = away;
+                                  results.honor_runner = home;
+                                  changed = true;
+                            }
+                        }
+                    }
+                }
+
+                if (isStageMatchUpdated) {
+                    console.log(`Updated K.O. Match [${item.stage}]: ${home} ${scoreStr} ${away} [Status: ${status}]`);
+                }
+
+                // Track K.O. match as provisional if currently in progress
+                if (koKey && isLive) {
+                    provisionalMatches.add(koKey);
                 }
             }
         });
 
-        console.log(`Loaded ${provisionalMatches.size} provisional matches dynamically from API.`);
+        // Set the provisionalMatches list in results object so it matches
+        results.provisionalMatches = Array.from(provisionalMatches);
+
+        // Check if anything changed in results JSON to avoid drawing
+        if (JSON.stringify(results) !== prevResultsJSON) {
+            console.log("Results changed. Redrawing UI...");
+            updateAppUI();
+            return true;
+        } else {
+            console.log("No score changes detected. Skipping UI redraw.");
+            return false;
+        }
 
     } catch (error) {
-        console.error("Error loading live results from API:", error);
+        console.error("Error fetching live results from football-data API:", error);
+        return false;
     }
 }
 
@@ -1702,7 +1881,7 @@ function downloadResultsJSON() {
 // --- 🔴 AUTOMATIC LIVE UPDATES & POLLING LOGIC ---
 let liveRefreshInterval = null;
 
-// Check if any match is currently playing (live window: [fecha - 15 min, fecha + 3 hours])
+// Check if any match is currently playing (live window: [fecha - 15 min, fecha + 4 hours])
 function isAnyMatchLive() {
     if (!porraData || !porraData.matches) return false;
     
@@ -1718,40 +1897,45 @@ function isAnyMatchLive() {
         const dateISO = m.fecha.trim().replace(/\s+/g, 'T').replace(/\//g, '-');
         const matchTime = new Date(dateISO + SPAIN_OFFSET).getTime();
         if (isNaN(matchTime)) return false;
-        // 15 minutes before to 3 hours after
-        return now >= (matchTime - 15 * 60 * 1000) && now <= (matchTime + 3 * 60 * 60 * 1000);
+        // 15 minutes before to 4 hours after
+        return now >= (matchTime - 15 * 60 * 1000) && now <= (matchTime + 4 * 60 * 60 * 1000);
     });
 }
 
-// Function to refresh results.json from the server
+// Function to refresh results from football-data.org API or server results.json
 async function refreshResults() {
     const refreshBtn = document.getElementById('live-refresh-btn');
     if (refreshBtn) refreshBtn.classList.add('spinning');
     
     try {
-        console.log("Refreshing results.json from server...");
-        // Add cache buster query parameter to bypass browser caching
-        const response = await fetch(`results.json?t=${Date.now()}`);
-        if (!response.ok) throw new Error("Failed to fetch results.json");
-        
-        const freshResults = await response.json();
-        if (freshResults && freshResults.matches) {
-            // Compare the JSON representations to prevent DOM flicker if nothing has changed
-            if (JSON.stringify(freshResults) === JSON.stringify(results)) {
-                console.log("results.json is identical. Skipping UI redraw.");
-                return;
+        if (isAnyMatchLive()) {
+            console.log("Live matches active. Refreshing live results from API...");
+            await fetchAndProcessLiveResults();
+        } else {
+            console.log("No live matches active. Refreshing results.json from server...");
+            // Add cache buster query parameter to bypass browser caching
+            const response = await fetch(`results.json?t=${Date.now()}`);
+            if (!response.ok) throw new Error("Failed to fetch results.json");
+            
+            const freshResults = await response.json();
+            if (freshResults && freshResults.matches) {
+                // Compare the JSON representations to prevent DOM flicker if nothing has changed
+                if (JSON.stringify(freshResults) === JSON.stringify(results)) {
+                    console.log("results.json is identical. Skipping UI redraw.");
+                    return;
+                }
+                
+                results = freshResults;
+                
+                // Repopulate provisionalMatches Set
+                provisionalMatches.clear();
+                if (results.provisionalMatches && Array.isArray(results.provisionalMatches)) {
+                    results.provisionalMatches.forEach(id => provisionalMatches.add(String(id)));
+                }
+                
+                updateAppUI();
+                console.log("results.json updated and UI redrawn.");
             }
-            
-            results = freshResults;
-            
-            // Repopulate provisionalMatches Set
-            provisionalMatches.clear();
-            if (results.provisionalMatches && Array.isArray(results.provisionalMatches)) {
-                results.provisionalMatches.forEach(id => provisionalMatches.add(String(id)));
-            }
-            
-            updateAppUI();
-            console.log("results.json updated and UI redrawn.");
         }
     } catch (e) {
         console.error("Error refreshing results:", e);
@@ -1773,10 +1957,12 @@ function setupLiveRefresh() {
     if (isAnyMatchLive()) {
         if (liveIndicator) liveIndicator.style.display = 'inline-flex';
         
-        // Setup automatic polling every 30 seconds
+        // Setup automatic polling every 45 seconds
         if (!liveRefreshInterval) {
-            console.log("Live matches detected. Enabling auto-refresh every 30 seconds.");
-            liveRefreshInterval = setInterval(refreshResults, 30 * 1000);
+            console.log("Live matches detected. Enabling auto-refresh every 45 seconds.");
+            // Refresh once immediately
+            refreshResults();
+            liveRefreshInterval = setInterval(refreshResults, 45 * 1000);
         }
     } else {
         if (liveIndicator) liveIndicator.style.display = 'none';
