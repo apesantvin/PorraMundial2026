@@ -13,6 +13,7 @@ const TEAM_TRANSLATIONS = {
     'czechia': 'República Checa',
     'canada': 'Canadá',
     'bosnia & herzegovina': 'Bosnia y Herzegovina',
+    'bosnia andPipe': 'Bosnia y Herzegovina',
     'bosnia and herzegovina': 'Bosnia y Herzegovina',
     'qatar': 'Catar',
     'switzerland': 'Suiza',
@@ -65,6 +66,8 @@ const TEAM_TRANSLATIONS = {
     'panama': 'Panamá'
 };
 
+const LIVE_STATUSES = new Set(["1H", "2H", "HT", "ET", "BT", "P"]);
+
 function translateTeam(name) {
     if (!name) return "";
     const clean = name.trim().toLowerCase();
@@ -100,6 +103,9 @@ async function run() {
     if (!results.final_teams) results.final_teams = [];
     if (!results.r3_4_match) results.r3_4_match = { matchup: '', score: '' };
     if (!results.final_match) results.final_match = { matchup: '', score: '' };
+    
+    // Clear and initialize provisionalMatches array in results.json
+    results.provisionalMatches = [];
 
     const forceRun = process.argv.includes('--force');
     const now = Date.now();
@@ -216,16 +222,30 @@ async function run() {
                         console.log(`Updated Match ${matchId} (${home} ${scoreStr} ${away}) [Status: ${status}]`);
                         updatedCount++;
                     }
+
+                    // Track as provisional if currently in progress
+                    if (LIVE_STATUSES.has(status)) {
+                        results.provisionalMatches.push(matchId);
+                    }
                 }
             } else {
                 // K.O. stages
                 let isStageMatchUpdated = false;
+                let koKey = "";
 
                 if (round.includes('Round of 32')) {
                     addQualified(results.r32_teams, home);
                     addQualified(results.r32_teams, away);
                     if (isPlayedOrLive) {
                         isStageMatchUpdated = updateKOStageMatches(results.r32_matches, home, away, scoreStr);
+                        // Find the match key for provisional tracking
+                        for (const [key, matchObj] of Object.entries(results.r32_matches)) {
+                            const teams = (matchObj.matchup || "").split('-').map(t => t.trim());
+                            if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
+                                koKey = `r32_matches:${key}`;
+                                break;
+                            }
+                        }
                         // Propagate winner to Round of 16
                         if (item.teams.home.winner) addQualified(results.r16_teams, home);
                         if (item.teams.away.winner) addQualified(results.r16_teams, away);
@@ -235,6 +255,13 @@ async function run() {
                     addQualified(results.r16_teams, away);
                     if (isPlayedOrLive) {
                         isStageMatchUpdated = updateKOStageMatches(results.r16_matches, home, away, scoreStr);
+                        for (const [key, matchObj] of Object.entries(results.r16_matches)) {
+                            const teams = (matchObj.matchup || "").split('-').map(t => t.trim());
+                            if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
+                                koKey = `r16_matches:${key}`;
+                                break;
+                            }
+                        }
                         // Propagate winner to Quarter-finals
                         if (item.teams.home.winner) addQualified(results.r8_teams, home);
                         if (item.teams.away.winner) addQualified(results.r8_teams, away);
@@ -244,6 +271,13 @@ async function run() {
                     addQualified(results.r8_teams, away);
                     if (isPlayedOrLive) {
                         isStageMatchUpdated = updateKOStageMatches(results.r8_matches, home, away, scoreStr);
+                        for (const [key, matchObj] of Object.entries(results.r8_matches)) {
+                            const teams = (matchObj.matchup || "").split('-').map(t => t.trim());
+                            if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
+                                koKey = `r8_matches:${key}`;
+                                break;
+                            }
+                        }
                         // Propagate winner to Semi-finals
                         if (item.teams.home.winner) addQualified(results.r4_teams, home);
                         if (item.teams.away.winner) addQualified(results.r4_teams, away);
@@ -253,6 +287,13 @@ async function run() {
                     addQualified(results.r4_teams, away);
                     if (isPlayedOrLive) {
                         isStageMatchUpdated = updateKOStageMatches(results.r4_matches, home, away, scoreStr);
+                        for (const [key, matchObj] of Object.entries(results.r4_matches)) {
+                            const teams = (matchObj.matchup || "").split('-').map(t => t.trim());
+                            if (teams.length === 2 && ((teams[0] === home && teams[1] === away) || (teams[0] === away && teams[1] === home))) {
+                                koKey = `r4_matches:${key}`;
+                                break;
+                            }
+                        }
                         // Propagate winner to Final, loser to 3rd place match
                         if (item.teams.home.winner) {
                             addQualified(results.final_teams, home);
@@ -274,6 +315,7 @@ async function run() {
                                 results.r3_4_match.score = scoreStr;
                                 isStageMatchUpdated = true;
                             }
+                            koKey = "single:r3_4_match";
                         }
                         // Assign 3rd and 4th place
                         const isFinished = (status === 'FT' || status === 'AET' || status === 'PEN');
@@ -298,6 +340,7 @@ async function run() {
                                 results.final_match.score = scoreStr;
                                 isStageMatchUpdated = true;
                             }
+                            koKey = "single:final_match";
                         }
                         // Assign Champion and Runner-up
                         const isFinished = (status === 'FT' || status === 'AET' || status === 'PEN');
@@ -317,16 +360,18 @@ async function run() {
                     console.log(`Updated K.O. Match [${round}]: ${home} ${scoreStr} ${away} [Status: ${status}]`);
                     updatedCount++;
                 }
+
+                // Track K.O. match as provisional if currently in progress
+                if (koKey && LIVE_STATUSES.has(status)) {
+                    results.provisionalMatches.push(koKey);
+                }
             }
         });
 
-        // 4. Save results back to results.json if there are changes
-        if (updatedCount > 0) {
-            fs.writeFileSync(resultsPath, JSON.stringify(results, null, 2), 'utf8');
-            console.log(`Successfully saved results.json with ${updatedCount} score updates.`);
-        } else {
-            console.log("No score changes detected. results.json is already up to date.");
-        }
+        // 4. Save results back to results.json (if changes were detected OR if provisional list changed)
+        // Since we clear results.provisionalMatches, we always overwrite to keep them accurate
+        fs.writeFileSync(resultsPath, JSON.stringify(results, null, 2), 'utf8');
+        console.log(`Saved results.json with updates. ${updatedCount} match scores changed. ${results.provisionalMatches.length} matches currently live/provisional.`);
 
     } catch (error) {
         console.error("Error occurred while executing results update:", error);

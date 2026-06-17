@@ -56,53 +56,11 @@ async function initApp() {
         // Clone officialResults into results
         results = JSON.parse(JSON.stringify(officialResults));
 
-        // 1. Load API Cache from localStorage
-        let apiCache = {
-            matches: {},
-            ko_matches: {},
-            last_updated: 0
-        };
-        const savedCache = localStorage.getItem('porra_api_results_cache');
-        if (savedCache) {
-            try {
-                apiCache = JSON.parse(savedCache);
-                console.log("Loaded API cache from localStorage");
-            } catch (e) {
-                console.error("Error parsing API cache", e);
-            }
+        // 1. Populate provisionalMatches from results.json (if present)
+        provisionalMatches.clear();
+        if (results.provisionalMatches && Array.isArray(results.provisionalMatches)) {
+            results.provisionalMatches.forEach(id => provisionalMatches.add(String(id)));
         }
-
-        // 2. Merge cached API scores into results in-memory
-        Object.entries(apiCache.matches || {}).forEach(([matchId, cacheObj]) => {
-            if (!results.matches[matchId] || results.matches[matchId].trim() === "") {
-                results.matches[matchId] = cacheObj.score;
-                if (cacheObj.status === "live") {
-                    provisionalMatches.add(matchId);
-                }
-            }
-        });
-
-        Object.entries(apiCache.ko_matches || {}).forEach(([stageMatchKey, cacheObj]) => {
-            const parts = stageMatchKey.split(':');
-            const stageKey = parts[0];
-            const matchKey = parts[1];
-            
-            if (stageKey === 'single') {
-                if (results[matchKey] && (!results[matchKey].score || results[matchKey].score.trim() === "")) {
-                    results[matchKey].score = cacheObj.score;
-                    if (cacheObj.status === "live") {
-                        provisionalMatches.add(stageMatchKey);
-                    }
-                }
-            } else {
-                if (results[stageKey] && results[stageKey][matchKey] && (!results[stageKey][matchKey].score || results[stageKey][matchKey].score.trim() === "")) {
-                    results[stageKey][matchKey].score = cacheObj.score;
-                    if (cacheObj.status === "live") {
-                        provisionalMatches.add(stageMatchKey);
-                    }
-                }
-            }
-        });
 
         // 3. Process points and render UI immediately
         updateAppUI();
@@ -1743,6 +1701,13 @@ async function refreshResults() {
         const freshResults = await response.json();
         if (freshResults && freshResults.matches) {
             results = freshResults;
+            
+            // Repopulate provisionalMatches Set
+            provisionalMatches.clear();
+            if (results.provisionalMatches && Array.isArray(results.provisionalMatches)) {
+                results.provisionalMatches.forEach(id => provisionalMatches.add(String(id)));
+            }
+            
             updateAppUI();
             console.log("results.json updated successfully.");
         }
