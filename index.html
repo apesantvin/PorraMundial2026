@@ -86,11 +86,6 @@
                     <button class="filter-btn" data-filter="J2">Jornada 2</button>
                     <button class="filter-btn" data-filter="J3">Jornada 3</button>
                 </div>
-                <div class="admin-edit-toggle-container">
-                    <button class="btn btn-secondary" id="enable-edit-btn">
-                        <i class="fa-solid fa-lock"></i> Modo Edición (Admin)
-                    </button>
-                </div>
             </div>
 
             <div class="matches-grid" id="matches-grid">
@@ -212,18 +207,17 @@
                     </div>
                     <div class="admin-server-actions">
                         <div class="status-box info">
-                            <h4><i class="fa-solid fa-circle-info"></i> ¿Cómo actualizar los resultados oficiales?</h4>
-                            <p>Dado que hospedas la aplicación en GitHub Pages de forma estática, puedes actualizar los resultados siguiendo estos sencillos pasos:</p>
+                            <h4><i class="fa-solid fa-circle-info"></i> Descargar Resultados de la API para GitHub</h4>
+                            <p>Esta pantalla te permite consolidar los resultados obtenidos en vivo desde la API e incorporarlos a tu archivo oficial:</p>
                             <ol>
-                                <li>Ve a la pestaña <strong>Partidos</strong> y activa el <strong>Modo Edición (Admin)</strong>.</li>
-                                <li>Rellena o modifica los marcadores de los partidos y/o las eliminatorias directamente en las tarjetas de los partidos.</li>
-                                <li>Si quieres consolidar resultados cargados temporalmente en vivo por la API, pulsa el botón <strong>Hacer Oficiales Resultados de API</strong> de abajo.</li>
-                                <li>Pulsa <strong>Descargar results.json</strong> para obtener el archivo actualizado.</li>
-                                <li>Sube el archivo descargado a la raíz de tu repositorio en GitHub para que todos los participantes vean la clasificación actualizada.</li>
+                                <li>Los partidos en directo o terminados recientemente aparecen de forma temporal como <strong>Provisional (API)</strong>.</li>
+                                <li>Haz clic en el botón <strong>Hacer Oficiales Resultados de API</strong> de abajo para convertir esos resultados en oficiales.</li>
+                                <li>Pulsa en <strong>Descargar results.json</strong> para descargar el archivo de resultados actualizado.</li>
+                                <li>Sube el archivo descargado directamente a tu repositorio de GitHub Pages reemplazando el <code>results.json</code> anterior para consolidarlos para todos los participantes de forma permanente.</li>
                             </ol>
                         </div>
 
-                        <div class="admin-buttons-stack">
+                        <div class="admin-buttons-stack" style="display: flex; flex-direction: column; gap: 1rem;">
                             <button class="btn btn-accent btn-large" id="download-json-btn">
                                 <i class="fa-solid fa-download"></i> Descargar results.json
                             </button>

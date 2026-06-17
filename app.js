@@ -1,9 +1,8 @@
 // State variables
 let porraData = null;
 let results = null;
-let officialResults = null; // Copy of official results (excluding provisional scores)
+let officialResults = null;
 const provisionalMatches = new Set(); // Track matches loaded dynamically from the API
-let editMode = false;
 let activeTab = 'clasificacion';
 let currentFilter = 'all';
 let evolutionChart = null;
@@ -21,35 +20,41 @@ async function initApp() {
         const dataResponse = await fetch('porra_data.json');
         porraData = await dataResponse.json();
         
-        // Load results. Prioritize localStorage (draft) then server results.json
-        const localResults = localStorage.getItem('porra_results_draft');
-        if (localResults) {
-            results = JSON.parse(localResults);
-            console.log("Loaded results from local draft draft");
-        } else {
+        // Load officialResults draft from localStorage if it exists, otherwise fetch results.json
+        const draft = localStorage.getItem('porra_results_draft');
+        if (draft) {
+            try {
+                officialResults = JSON.parse(draft);
+                console.log("Loaded official results from localStorage draft");
+            } catch (e) {
+                console.error("Error parsing localStorage draft", e);
+            }
+        }
+        
+        if (!officialResults) {
             const resResponse = await fetch('results.json');
-            results = await resResponse.json();
-            console.log("Loaded results from results.json");
+            officialResults = await resResponse.json();
+            console.log("Loaded official results from results.json");
         }
 
-        // Clean results template if some keys are missing
-        if (!results.matches) results.matches = {};
-        if (!results.group_standings) results.group_standings = {};
-        if (!results.r32_teams) results.r32_teams = [];
-        if (!results.r32_matches) results.r32_matches = {};
-        if (!results.r16_teams) results.r16_teams = [];
-        if (!results.r16_matches) results.r16_matches = {};
-        if (!results.r8_teams) results.r8_teams = [];
-        if (!results.r8_matches) results.r8_matches = {};
-        if (!results.r4_teams) results.r4_teams = [];
-        if (!results.r4_matches) results.r4_matches = {};
-        if (!results.r3_4_teams) results.r3_4_teams = [];
-        if (!results.final_teams) results.final_teams = [];
-        if (!results.r3_4_match) results.r3_4_match = { matchup: '', score: '' };
-        if (!results.final_match) results.final_match = { matchup: '', score: '' };
+        // Clean officialResults template if some keys are missing
+        if (!officialResults.matches) officialResults.matches = {};
+        if (!officialResults.group_standings) officialResults.group_standings = {};
+        if (!officialResults.r32_teams) officialResults.r32_teams = [];
+        if (!officialResults.r32_matches) officialResults.r32_matches = {};
+        if (!officialResults.r16_teams) officialResults.r16_teams = [];
+        if (!officialResults.r16_matches) officialResults.r16_matches = {};
+        if (!officialResults.r8_teams) officialResults.r8_teams = [];
+        if (!officialResults.r8_matches) officialResults.r8_matches = {};
+        if (!officialResults.r4_teams) officialResults.r4_teams = [];
+        if (!officialResults.r4_matches) officialResults.r4_matches = {};
+        if (!officialResults.r3_4_teams) officialResults.r3_4_teams = [];
+        if (!officialResults.final_teams) officialResults.final_teams = [];
+        if (!officialResults.r3_4_match) officialResults.r3_4_match = { matchup: '', score: '' };
+        if (!officialResults.final_match) officialResults.final_match = { matchup: '', score: '' };
 
-        // Clone results to officialResults before we load live API scores
-        officialResults = JSON.parse(JSON.stringify(results));
+        // Clone officialResults into results
+        results = JSON.parse(JSON.stringify(officialResults));
 
         // 1. Load API Cache from localStorage
         let apiCache = {
@@ -587,31 +592,23 @@ function renderMatches() {
         const flagHome = getFlagHtml(m.casa, true);
         const flagAway = getFlagHtml(m.fuera, true);
 
+        const dateStr = formatMatchDate(m.fecha);
+
         const cardHeader = `
             <div class="match-header">
                 <span>Partido ${m.id}</span>
+                <span class="match-date" style="font-size: 0.75rem; opacity: 0.8; font-weight: 500;">${dateStr}</span>
                 <span>${m.grupo || ''} - ${m.jor}</span>
             </div>
         `;
 
-        let scoreContent = '';
-        if (editMode) {
-            scoreContent = `
-                <div class="score-inputs">
-                    <input type="number" min="0" class="score-input" data-match-id="${m.id}" data-team="home" value="${homeScore}" placeholder="-">
-                    <span class="score-hyphen">-</span>
-                    <input type="number" min="0" class="score-input" data-match-id="${m.id}" data-team="away" value="${awayScore}" placeholder="-">
-                </div>
-            `;
-        } else {
-            scoreContent = `
-                <div class="score-display">
-                    <span class="score-number">${isPlayed ? homeScore : '-'}</span>
-                    <span class="score-hyphen">-</span>
-                    <span class="score-number">${isPlayed ? awayScore : '-'}</span>
-                </div>
-            `;
-        }
+        const scoreContent = `
+            <div class="score-display">
+                <span class="score-number">${isPlayed ? homeScore : '-'}</span>
+                <span class="score-hyphen">-</span>
+                <span class="score-number">${isPlayed ? awayScore : '-'}</span>
+            </div>
+        `;
 
         const cardBody = `
             <div class="match-body">
@@ -647,42 +644,6 @@ function renderMatches() {
         card.innerHTML = cardHeader + cardBody + cardFooter;
         grid.appendChild(card);
     });
-
-    // Setup input listeners in edit mode
-    if (editMode) {
-        document.querySelectorAll('.score-input').forEach(input => {
-            input.addEventListener('change', handleScoreInputChange);
-        });
-    }
-}
-
-// Handle changes in match scores inputs
-function handleScoreInputChange(e) {
-    const matchId = e.target.getAttribute('data-match-id');
-    const team = e.target.getAttribute('data-team');
-    const val = e.target.value;
-
-    // Find the input pairs
-    const homeInput = document.querySelector(`.score-input[data-match-id="${matchId}"][data-team="home"]`);
-    const awayInput = document.querySelector(`.score-input[data-match-id="${matchId}"][data-team="away"]`);
-
-    const homeVal = homeInput.value.trim();
-    const awayVal = awayInput.value.trim();
-
-    const scoreStr = (homeVal !== "" && awayVal !== "") ? `${homeVal}-${awayVal}` : "";
-    
-    // Update both active results and officialResults
-    results.matches[matchId] = scoreStr;
-    officialResults.matches[matchId] = scoreStr;
-
-    // If edited manually, it's no longer provisional
-    provisionalMatches.delete(String(matchId));
-
-    // Save official results draft in local storage
-    localStorage.setItem('porra_results_draft', JSON.stringify(officialResults));
-    
-    // Recalculate standings and update table/views instantly!
-    updateAppUI();
 }
 
 // Tab navigation handler
@@ -713,22 +674,6 @@ function setupEventListeners() {
         });
     });
 
-    // Admin Mode Toggle
-    const editBtn = document.getElementById('enable-edit-btn');
-    editBtn.addEventListener('click', () => {
-        editMode = !editMode;
-        if (editMode) {
-            editBtn.innerHTML = `<i class="fa-solid fa-lock-open"></i> Modo Lectura`;
-            editBtn.classList.remove('btn-secondary');
-            editBtn.classList.add('btn-primary');
-        } else {
-            editBtn.innerHTML = `<i class="fa-solid fa-lock"></i> Modo Edición (Admin)`;
-            editBtn.classList.remove('btn-primary');
-            editBtn.classList.add('btn-secondary');
-        }
-        renderMatches();
-    });
-
     // Modal Close
     document.getElementById('modal-close-btn').addEventListener('click', closePlayerModal);
     document.getElementById('player-modal').addEventListener('click', (e) => {
@@ -747,57 +692,15 @@ function setupEventListeners() {
         });
     });
 
-    // Descargar JSON
-    document.getElementById('download-json-btn').addEventListener('click', downloadResultsJSON);
-
-    // Hacer oficiales resultados provisorios (API)
-    const approveBtn = document.getElementById('approve-provisional-btn');
-    if (approveBtn) {
-        approveBtn.addEventListener('click', approveProvisionalScores);
+    // Admin buttons
+    const downloadJsonBtn = document.getElementById('download-json-btn');
+    if (downloadJsonBtn) {
+        downloadJsonBtn.addEventListener('click', downloadResultsJSON);
     }
-}
-
-function approveProvisionalScores() {
-    if (provisionalMatches.size === 0) {
-        alert("No hay resultados provisionales cargados desde la API para aprobar.");
-        return;
-    }
-
-    if (confirm(`¿Estás seguro de que quieres hacer oficiales los ${provisionalMatches.size} resultados cargados provisionalmente de la API? Esto los guardará de forma oficial para que puedas descargarlos.`)) {
-        // Copy provisional match scores to officialResults
-        provisionalMatches.forEach(matchId => {
-            // For Group Stage matches
-            if (!matchId.includes(':')) {
-                if (results.matches[matchId]) {
-                    officialResults.matches[matchId] = results.matches[matchId];
-                }
-            } else {
-                // For KO matches (formatted like stageKey:matchKey)
-                const parts = matchId.split(':');
-                const stageKey = parts[0];
-                const matchKey = parts[1];
-                if (stageKey === 'single') {
-                    if (results[matchKey]) {
-                        officialResults[matchKey].score = results[matchKey].score;
-                    }
-                } else {
-                    if (results[stageKey] && results[stageKey][matchKey]) {
-                        officialResults[stageKey][matchKey].score = results[stageKey][matchKey].score;
-                    }
-                }
-            }
-        });
-
-        // Clear provisional set
-        provisionalMatches.clear();
-
-        // Save official results draft in local storage
-        localStorage.setItem('porra_results_draft', JSON.stringify(officialResults));
-
-        // Update UI
-        updateAppUI();
-
-        alert("Resultados provisionales aprobados en memoria. Ahora puedes pulsar 'Descargar results.json' para descargar el archivo actualizado y subirlo a GitHub.");
+    
+    const approveProvisionalBtn = document.getElementById('approve-provisional-btn');
+    if (approveProvisionalBtn) {
+        approveProvisionalBtn.addEventListener('click', approveProvisionalScores);
     }
 }
 
@@ -1128,16 +1031,6 @@ function closePlayerModal() {
     document.getElementById('player-modal').classList.remove('open');
 }
 
-// Download local results state as results.json file
-function downloadResultsJSON() {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(officialResults, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", "results.json");
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-}
 
 // Helper: get HTML for country flag image from flagcdn
 function getFlagHtml(countryName, isLarge = false) {
@@ -1608,5 +1501,83 @@ function renderEvolutionChart() {
         },
         options: options
     });
+}
+
+// Format date string to Spanish readable format
+function formatMatchDate(dateStr) {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr.replace(/-/g, "/"));
+        if (isNaN(d.getTime())) return dateStr;
+        
+        // E.g., "jue, 11 jun - 21:00"
+        const day = d.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: 'short' });
+        const time = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        
+        // Capitalize first letter
+        return day.charAt(0).toUpperCase() + day.slice(1) + " - " + time;
+    } catch (e) {
+        return dateStr;
+    }
+}
+
+// Admin: Merge provisional API results into official results
+function approveProvisionalScores() {
+    if (!results || !officialResults) return;
+    
+    if (provisionalMatches.size === 0) {
+        alert("No hay resultados provisionales de la API para hacer oficiales.");
+        return;
+    }
+    
+    // Copy all provisional matches from results to officialResults
+    provisionalMatches.forEach(key => {
+        if (!key.includes(':')) {
+            // Group stage match
+            officialResults.matches[key] = results.matches[key];
+        } else {
+            const parts = key.split(':');
+            const prefix = parts[0];
+            const matchKey = parts[1];
+            
+            if (prefix === 'single') {
+                if (officialResults[matchKey]) {
+                    officialResults[matchKey].score = results[matchKey].score;
+                }
+            } else {
+                if (officialResults[prefix] && officialResults[prefix][matchKey]) {
+                    officialResults[prefix][matchKey].score = results[prefix][matchKey].score;
+                }
+            }
+        }
+    });
+    
+    // Clear provisional matches (since they are now official)
+    provisionalMatches.clear();
+    
+    // Save officialResults to localStorage draft
+    localStorage.setItem('porra_results_draft', JSON.stringify(officialResults));
+    
+    // Synchronize results to match officialResults
+    results = JSON.parse(JSON.stringify(officialResults));
+    
+    updateAppUI();
+    alert("Los resultados de la API se han guardado como oficiales localmente. Ahora puedes descargar el archivo results.json.");
+}
+
+// Admin: Download official results as JSON file
+function downloadResultsJSON() {
+    if (!officialResults) {
+        alert("No hay resultados cargados para descargar.");
+        return;
+    }
+    
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(officialResults, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href",     dataStr);
+    downloadAnchor.setAttribute("download", "results.json");
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
 }
 
