@@ -1516,74 +1516,65 @@ function getMatchupFlagsHtml(matchupStr) {
 }
 
 // Fetch live World Cup match results dynamically from football-data.org API via CORS proxy
-const TEAM_TRANSLATIONS = {
-    'mexico': 'México',
-    'south africa': 'Sudáfrica',
-    'south korea': 'Corea del Sur',
-    'korea republic': 'Corea del Sur',
-    'czech republic': 'República Checa',
-    'czechia': 'República Checa',
-    'canada': 'Canadá',
-    'bosnia & herzegovina': 'Bosnia y Herzegovina',
-    'bosnia and herzegovina': 'Bosnia y Herzegovina',
-    'bosnia-h.': 'Bosnia y Herzegovina',
-    'bosnia-herzegovina': 'Bosnia y Herzegovina',
-    'qatar': 'Catar',
-    'switzerland': 'Suiza',
-    'brazil': 'Brasil',
-    'morocco': 'Marruecos',
-    'haiti': 'Haití',
-    'scotland': 'Escocia',
-    'united states': 'Estados Unidos',
-    'usa': 'Estados Unidos',
-    'paraguay': 'Paraguay',
-    'australia': 'Australia',
-    'turkiye': 'Turquía',
-    'turkey': 'Turquía',
-    'germany': 'Alemania',
-    'curacao': 'Curazao',
-    'curaçao': 'Curazao',
-    'cote d\'ivoire': 'Costa de Marfil',
-    'ivory coast': 'Costa de Marfil',
-    'ecuador': 'Ecuador',
-    'netherlands': 'Países Bajos',
-    'japan': 'Japón',
-    'sweden': 'Suecia',
-    'tunisia': 'Túnez',
-    'belgium': 'Bélgica',
-    'egypt': 'Egipto',
-    'ir iran': 'Irán',
-    'iran': 'Irán',
-    'new zealand': 'Nueva Zelanda',
-    'spain': 'España',
-    'cabo verde': 'Cabo Verde',
-    'cape verde': 'Cabo Verde',
-    'cape verde islands': 'Cabo Verde',
-    'saudi arabia': 'Arabia Saudita',
-    'uruguay': 'Uruguay',
-    'france': 'Francia',
-    'senegal': 'Senegal',
-    'iraq': 'Irak',
-    'norway': 'Noruega',
-    'argentina': 'Argentina',
-    'algeria': 'Argelia',
-    'austria': 'Austria',
-    'jordan': 'Jordania',
-    'portugal': 'Portugal',
-    'congo dr': 'RD Congo',
-    'dr congo': 'RD Congo',
-    'uzbekistan': 'Uzbekistán',
-    'colombia': 'Colombia',
-    'england': 'Inglaterra',
-    'croatia': 'Croacia',
-    'ghana': 'Ghana',
-    'panama': 'Panamá'
+const TLA_TRANSLATIONS = {
+    'NOR': 'Noruega',
+    'HAI': 'Haití',
+    'IRN': 'Irán',
+    'EGY': 'Egipto',
+    'CUW': 'Curazao',
+    'CUR': 'Curazao',
+    'CAN': 'Canadá',
+    'GER': 'Alemania',
+    'ESP': 'España',
+    'PAR': 'Paraguay',
+    'ALG': 'Argelia',
+    'JOR': 'Jordania',
+    'URY': 'Uruguay',
+    'SEN': 'Senegal',
+    'RSA': 'Sudáfrica',
+    'FRA': 'Francia',
+    'KSA': 'Arabia Saudita',
+    'TUN': 'Túnez',
+    'TUR': 'Turquía',
+    'COL': 'Colombia',
+    'QAT': 'Catar',
+    'MEX': 'México',
+    'ARG': 'Argentina',
+    'MAR': 'Marruecos',
+    'AUT': 'Austria',
+    'NZL': 'Nueva Zelanda',
+    'BEL': 'Bélgica',
+    'UZB': 'Uzbekistán',
+    'COD': 'RD Congo',
+    'CIV': 'Costa de Marfil',
+    'AUS': 'Australia',
+    'BIH': 'Bosnia y Herzegovina',
+    'CZE': 'República Checa',
+    'CRO': 'Croacia',
+    'SUI': 'Suiza',
+    'ECU': 'Ecuador',
+    'SWE': 'Suecia',
+    'POR': 'Portugal',
+    'JPN': 'Japón',
+    'PAN': 'Panamá',
+    'IRQ': 'Irak',
+    'GHA': 'Ghana',
+    'BRA': 'Brasil',
+    'KOR': 'Corea del Sur',
+    'CPV': 'Cabo Verde',
+    'SCO': 'Escocia',
+    'NED': 'Países Bajos',
+    'ENG': 'Inglaterra',
+    'USA': 'Estados Unidos'
 };
 
-function translateTeam(name) {
-    if (!name) return "";
-    const clean = name.trim().toLowerCase();
-    return TEAM_TRANSLATIONS[clean] || name;
+function translateTeam(teamObj) {
+    if (!teamObj) return "";
+    const tla = (teamObj.tla || "").toUpperCase();
+    if (TLA_TRANSLATIONS[tla]) {
+        return TLA_TRANSLATIONS[tla];
+    }
+    return teamObj.shortName || teamObj.name || "";
 }
 
 const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED"]);
@@ -1651,8 +1642,8 @@ async function fetchAndProcessLiveResults() {
         }
 
         matches.forEach(item => {
-            const home = translateTeam(item.homeTeam.shortName || item.homeTeam.name);
-            const away = translateTeam(item.awayTeam.shortName || item.awayTeam.name);
+            const home = translateTeam(item.homeTeam);
+            const away = translateTeam(item.awayTeam);
             
             const goalsHome = item.score && item.score.fullTime ? item.score.fullTime.home : null;
             const goalsAway = item.score && item.score.fullTime ? item.score.fullTime.away : null;
