@@ -1526,6 +1526,8 @@ const TEAM_TRANSLATIONS = {
     'canada': 'Canadá',
     'bosnia & herzegovina': 'Bosnia y Herzegovina',
     'bosnia and herzegovina': 'Bosnia y Herzegovina',
+    'bosnia-h.': 'Bosnia y Herzegovina',
+    'bosnia-herzegovina': 'Bosnia y Herzegovina',
     'qatar': 'Catar',
     'switzerland': 'Suiza',
     'brazil': 'Brasil',
@@ -1556,6 +1558,7 @@ const TEAM_TRANSLATIONS = {
     'spain': 'España',
     'cabo verde': 'Cabo Verde',
     'cape verde': 'Cabo Verde',
+    'cape verde islands': 'Cabo Verde',
     'saudi arabia': 'Arabia Saudita',
     'uruguay': 'Uruguay',
     'france': 'Francia',
@@ -2155,14 +2158,15 @@ function approveProvisionalScores() {
     alert("Los resultados de la API se han guardado como oficiales localmente. Ahora puedes descargar el archivo results.json.");
 }
 
-// Admin: Download official results as JSON file
+// Admin: Download official results as JSON file (includes provisional scores)
 function downloadResultsJSON() {
-    if (!officialResults) {
+    const resultsToDownload = results || officialResults;
+    if (!resultsToDownload) {
         alert("No hay resultados cargados para descargar.");
         return;
     }
     
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(officialResults, null, 2));
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(resultsToDownload, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href",     dataStr);
     downloadAnchor.setAttribute("download", "results.json");
