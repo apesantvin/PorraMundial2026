@@ -188,9 +188,12 @@ function updateAppUI() {
 
     // 6. Render K.O. Rounds
     renderKORounds();
+
+    // 7. Render Group Standings Tables
+    renderGroupTables();
 }
 
-// Calculate the detailed points and ranking for all players
+/// Calculate the detailed points and ranking for all players
 function calculateStandings() {
     const playersPoints = {};
 
@@ -203,24 +206,49 @@ function calculateStandings() {
             group_standings: 0.0,
             ko_stages: 0.0,
             honor_list: 0.0,
-            breakdown: [] // match by match details
+            breakdown: [], // match by match details
+            fixed: {
+                total: 0.0,
+                group_stage: 0.0,
+                group_standings: 0.0,
+                ko_stages: 0.0,
+                honor_list: 0.0
+            },
+            provisional: {
+                total: 0.0,
+                group_stage: 0.0,
+                group_standings: 0.0,
+                ko_stages: 0.0,
+                honor_list: 0.0
+            }
         };
     });
 
     // 1. Group Stage matches points (divisor 2)
-    let rawGroupStagePoints = {};
-    porraData.players.forEach(p => rawGroupStagePoints[p] = 0.0);
+    let rawGroupStagePointsFixed = {};
+    let rawGroupStagePointsProvisional = {};
+    porraData.players.forEach(p => {
+        rawGroupStagePointsFixed[p] = 0.0;
+        rawGroupStagePointsProvisional[p] = 0.0;
+    });
 
     porraData.matches.forEach(m => {
         const matchKey = `${m.casa}-${m.fuera}`;
         const actualScore = results.matches[m.id];
         
         if (actualScore && actualScore.trim() !== "") {
+            const isProv = provisionalMatches && provisionalMatches.has(String(m.id));
             porraData.players.forEach(p => {
                 const pred = porraData.predictions[p].group_stage[matchKey];
                 const outcome = calcOutcomePoints(actualScore, pred);
                 
-                rawGroupStagePoints[p] += outcome.points;
+                if (isProv) {
+                    rawGroupStagePointsProvisional[p] += outcome.points;
+                } else {
+                    rawGroupStagePointsFixed[p] += outcome.points;
+                    rawGroupStagePointsProvisional[p] += outcome.points;
+                }
+                
                 playersPoints[p].breakdown.push({
                     type: 'group_match',
                     matchId: m.id,
@@ -232,7 +260,8 @@ function calculateStandings() {
                     points: outcome.points,
                     netPoints: outcome.points / 2.0,
                     details: outcome.details,
-                    outcomeClass: outcome.class
+                    outcomeClass: outcome.class,
+                    isProvisional: isProv
                 });
             });
         } else {
@@ -258,31 +287,54 @@ function calculateStandings() {
 
     // Set group stage net points
     porraData.players.forEach(p => {
-        playersPoints[p].group_stage = rawGroupStagePoints[p] / 2.0;
+        playersPoints[p].fixed.group_stage = rawGroupStagePointsFixed[p] / 2.0;
+        playersPoints[p].provisional.group_stage = rawGroupStagePointsProvisional[p] / 2.0;
     });
 
     // 2. Group Standings Positions points (divisor 2)
+    const dynamicStandingsData = calculateGroupStandings();
+    
     porraData.players.forEach(p => {
-        let rawPoints = 0.0;
+        let rawPointsFixed = 0.0;
+        let rawPointsProvisional = 0.0;
         const preds = porraData.predictions[p].group_standings || {};
         
         Object.entries(preds).forEach(([item, teamPred]) => {
-            const actual = results.group_standings[item];
-            if (actual && actual.trim() !== "") {
-                const isCorrect = String(actual).toLowerCase() === String(teamPred).toLowerCase();
+            const official = results.group_standings[item];
+            const rulePoint = (item.startsWith("1º") || item.startsWith("2º")) ? 2.0 : 1.0;
+            
+            if (official && official.trim() !== "") {
+                const isCorrect = String(official).toLowerCase() === String(teamPred).toLowerCase();
                 if (isCorrect) {
-                    // 1º and 2º give 2 pts, 3º and 4º give 1 pt
-                    const rulePoint = (item.startsWith("1º") || item.startsWith("2º")) ? 2.0 : 1.0;
-                    rawPoints += rulePoint;
+                    rawPointsFixed += rulePoint;
+                    rawPointsProvisional += rulePoint;
+                }
+            } else {
+                const match = item.match(/^(\d)º GRUPO ([A-L])$/);
+                if (match) {
+                    const posNum = parseInt(match[1]);
+                    const groupLetter = match[2];
+                    const groupTeams = dynamicStandingsData.standingsByGroup[groupLetter] || [];
+                    const provisionalTeam = groupTeams[posNum - 1] ? groupTeams[posNum - 1].name : '';
+                    
+                    if (provisionalTeam && provisionalTeam.trim() !== "") {
+                        const isCorrectProv = String(provisionalTeam).toLowerCase() === String(teamPred).toLowerCase();
+                        if (isCorrectProv) {
+                            rawPointsProvisional += rulePoint;
+                        }
+                    }
                 }
             }
         });
-        playersPoints[p].group_standings = rawPoints / 2.0;
+        
+        playersPoints[p].fixed.group_standings = rawPointsFixed / 2.0;
+        playersPoints[p].provisional.group_standings = rawPointsProvisional / 2.0;
     });
 
     // 3. K.O. Stages points (divisor 2)
     porraData.players.forEach(p => {
-        let rawKOPoints = 0.0;
+        let rawKOPointsFixed = 0.0;
+        let rawKOPointsProvisional = 0.0;
         const playerPreds = porraData.predictions[p];
 
         // -- Round of 32 Teams --
@@ -290,7 +342,9 @@ function calculateStandings() {
         const r32_actual = results.r32_teams || [];
         Object.values(r32_teams_pred).forEach(team => {
             if (r32_actual.includes(team)) {
-                rawKOPoints += Number(porraData.rules.r32_qualified || 1.0);
+                const ruleVal = Number(porraData.rules.r32_qualified || 1.0);
+                rawKOPointsFixed += ruleVal;
+                rawKOPointsProvisional += ruleVal;
             }
         });
 
@@ -305,9 +359,14 @@ function calculateStandings() {
                 
                 const actual = r32_actual_matches[matchKey];
                 if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
-                    // Matchup occurred! Evaluate score
                     const outcome = calcOutcomePoints(actual.score, predScore);
-                    rawKOPoints += outcome.points;
+                    const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                    if (isProv) {
+                        rawKOPointsProvisional += outcome.points;
+                    } else {
+                        rawKOPointsFixed += outcome.points;
+                        rawKOPointsProvisional += outcome.points;
+                    }
                 }
             }
         });
@@ -317,13 +376,15 @@ function calculateStandings() {
         const r16_actual = results.r16_teams || [];
         Object.values(r16_teams_pred).forEach(team => {
             if (r16_actual.includes(team)) {
-                rawKOPoints += Number(porraData.rules.r16_qualified || 1.0);
+                const ruleVal = Number(porraData.rules.r16_qualified || 1.0);
+                rawKOPointsFixed += ruleVal;
+                rawKOPointsProvisional += ruleVal;
             }
         });
 
         // -- Round of 16 Matches --
         const r16_matches_pred = playerPreds.r16_matches || {};
-        const r16_actual_matches = results.r16_matches || {};
+        const r16_actual_matches = results.r16_actual_matches || results.r16_matches || {};
         Object.entries(r16_matches_pred).forEach(([matchKey, predVal]) => {
             if (predVal && predVal.includes('·')) {
                 const parts = predVal.split('·');
@@ -333,7 +394,13 @@ function calculateStandings() {
                 const actual = r16_actual_matches[matchKey];
                 if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                     const outcome = calcOutcomePoints(actual.score, predScore);
-                    rawKOPoints += outcome.points;
+                    const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                    if (isProv) {
+                        rawKOPointsProvisional += outcome.points;
+                    } else {
+                        rawKOPointsFixed += outcome.points;
+                        rawKOPointsProvisional += outcome.points;
+                    }
                 }
             }
         });
@@ -343,13 +410,15 @@ function calculateStandings() {
         const r8_actual = results.r8_teams || [];
         Object.values(r8_teams_pred).forEach(team => {
             if (r8_actual.includes(team)) {
-                rawKOPoints += Number(porraData.rules.r8_qualified || 1.0);
+                const ruleVal = Number(porraData.rules.r8_qualified || 1.0);
+                rawKOPointsFixed += ruleVal;
+                rawKOPointsProvisional += ruleVal;
             }
         });
 
         // -- Quarterfinals Matches --
         const r8_matches_pred = playerPreds.r8_matches || {};
-        const r8_actual_matches = results.r8_matches || {};
+        const r8_actual_matches = results.r8_actual_matches || results.r8_matches || {};
         Object.entries(r8_matches_pred).forEach(([matchKey, predVal]) => {
             if (predVal && predVal.includes('·')) {
                 const parts = predVal.split('·');
@@ -359,7 +428,13 @@ function calculateStandings() {
                 const actual = r8_actual_matches[matchKey];
                 if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                     const outcome = calcOutcomePoints(actual.score, predScore);
-                    rawKOPoints += outcome.points;
+                    const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                    if (isProv) {
+                        rawKOPointsProvisional += outcome.points;
+                    } else {
+                        rawKOPointsFixed += outcome.points;
+                        rawKOPointsProvisional += outcome.points;
+                    }
                 }
             }
         });
@@ -369,13 +444,15 @@ function calculateStandings() {
         const r4_actual = results.r4_teams || [];
         Object.values(r4_teams_pred).forEach(team => {
             if (r4_actual.includes(team)) {
-                rawKOPoints += Number(porraData.rules.r4_qualified || 1.0);
+                const ruleVal = Number(porraData.rules.r4_qualified || 1.0);
+                rawKOPointsFixed += ruleVal;
+                rawKOPointsProvisional += ruleVal;
             }
         });
 
         // -- Semifinals Matches --
         const r4_matches_pred = playerPreds.r4_matches || {};
-        const r4_actual_matches = results.r4_matches || {};
+        const r4_actual_matches = results.r4_actual_matches || results.r4_matches || {};
         Object.entries(r4_matches_pred).forEach(([matchKey, predVal]) => {
             if (predVal && predVal.includes('·')) {
                 const parts = predVal.split('·');
@@ -385,7 +462,13 @@ function calculateStandings() {
                 const actual = r4_actual_matches[matchKey];
                 if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                     const outcome = calcOutcomePoints(actual.score, predScore);
-                    rawKOPoints += outcome.points;
+                    const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                    if (isProv) {
+                        rawKOPointsProvisional += outcome.points;
+                    } else {
+                        rawKOPointsFixed += outcome.points;
+                        rawKOPointsProvisional += outcome.points;
+                    }
                 }
             }
         });
@@ -395,7 +478,9 @@ function calculateStandings() {
         const r3_4_actual = results.r3_4_teams || [];
         Object.values(r3_4_teams_pred).forEach(team => {
             if (r3_4_actual.includes(team)) {
-                rawKOPoints += Number(porraData.rules.r3_4_qualified || 1.0);
+                const ruleVal = Number(porraData.rules.r3_4_qualified || 1.0);
+                rawKOPointsFixed += ruleVal;
+                rawKOPointsProvisional += ruleVal;
             }
         });
 
@@ -404,7 +489,9 @@ function calculateStandings() {
         const final_actual = results.final_teams || [];
         Object.values(final_teams_pred).forEach(team => {
             if (final_actual.includes(team)) {
-                rawKOPoints += Number(porraData.rules.final_qualified || 2.0);
+                const ruleVal = Number(porraData.rules.final_qualified || 2.0);
+                rawKOPointsFixed += ruleVal;
+                rawKOPointsProvisional += ruleVal;
             }
         });
 
@@ -417,7 +504,13 @@ function calculateStandings() {
             const actual = results.r3_4_match;
             if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                 const outcome = calcOutcomePoints(actual.score, predScore);
-                rawKOPoints += outcome.points;
+                const isProv = provisionalMatches && provisionalMatches.has("r3-4");
+                if (isProv) {
+                    rawKOPointsProvisional += outcome.points;
+                } else {
+                    rawKOPointsFixed += outcome.points;
+                    rawKOPointsProvisional += outcome.points;
+                }
             }
         }
 
@@ -430,11 +523,18 @@ function calculateStandings() {
             const actual = results.final_match;
             if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                 const outcome = calcOutcomePoints(actual.score, predScore);
-                rawKOPoints += outcome.points;
+                const isProv = provisionalMatches && provisionalMatches.has("final");
+                if (isProv) {
+                    rawKOPointsProvisional += outcome.points;
+                } else {
+                    rawKOPointsFixed += outcome.points;
+                    rawKOPointsProvisional += outcome.points;
+                }
             }
         }
 
-        playersPoints[p].ko_stages = rawKOPoints / 2.0;
+        playersPoints[p].fixed.ko_stages = rawKOPointsFixed / 2.0;
+        playersPoints[p].provisional.ko_stages = rawKOPointsProvisional / 2.0;
     });
 
     // 4. Honor List points (divisor 2)
@@ -476,21 +576,34 @@ function calculateStandings() {
             }
         });
 
-        playersPoints[p].honor_list = rawHonorPoints / 2.0;
+        playersPoints[p].fixed.honor_list = rawHonorPoints / 2.0;
+        playersPoints[p].provisional.honor_list = rawHonorPoints / 2.0;
     });
 
     // Calculate Grand Total for each player
     porraData.players.forEach(p => {
-        playersPoints[p].total = playersPoints[p].group_stage + 
-                                  playersPoints[p].group_standings + 
-                                  playersPoints[p].ko_stages + 
-                                  playersPoints[p].honor_list;
+        playersPoints[p].fixed.total = playersPoints[p].fixed.group_stage + 
+                                       playersPoints[p].fixed.group_standings + 
+                                       playersPoints[p].fixed.ko_stages + 
+                                       playersPoints[p].fixed.honor_list;
+                                       
+        playersPoints[p].provisional.total = playersPoints[p].provisional.group_stage + 
+                                             playersPoints[p].provisional.group_standings + 
+                                             playersPoints[p].provisional.ko_stages + 
+                                             playersPoints[p].provisional.honor_list;
+
+        // Backwards compatibility and default values
+        playersPoints[p].total = playersPoints[p].fixed.total;
+        playersPoints[p].group_stage = playersPoints[p].fixed.group_stage;
+        playersPoints[p].group_standings = playersPoints[p].fixed.group_standings;
+        playersPoints[p].ko_stages = playersPoints[p].fixed.ko_stages;
+        playersPoints[p].honor_list = playersPoints[p].fixed.honor_list;
     });
 
-    // Return as array sorted by rank
+    // Return as array sorted by rank based on fixed.total
     return Object.values(playersPoints).sort((a, b) => {
-        if (b.total !== a.total) {
-            return b.total - a.total; // highest points first
+        if (b.fixed.total !== a.fixed.total) {
+            return b.fixed.total - a.fixed.total; // highest points first
         }
         // Tie-breaker: sort alphabetically by name if points are equal
         return a.name.localeCompare(b.name);
@@ -567,6 +680,49 @@ function renderStandings(standings) {
     const tbody = document.getElementById('standings-body');
     tbody.innerHTML = '';
     
+    // Check if there are any live matches
+    const hasLiveMatch = (provisionalMatches && provisionalMatches.size > 0);
+    const liveDisclaimer = document.getElementById('standings-live-disclaimer');
+    if (liveDisclaimer) {
+        liveDisclaimer.style.display = hasLiveMatch ? 'flex' : 'none';
+    }
+
+    // Determine which columns have active/pending matches or predictions to display on mobile
+    const table = document.getElementById('standings-table');
+    if (table) {
+        // Show group stage if there's any group match that is not officially completed
+        const showGroupStage = porraData.matches.some(m => 
+            (m.jor === 'J1' || m.jor === 'J2' || m.jor === 'J3') && 
+            (!officialResults.matches[m.id] || officialResults.matches[m.id].trim() === "" || provisionalMatches.has(String(m.id)))
+        );
+
+        // Show group standings if the official standings are not fully decided yet
+        const showGroupStandings = Object.values(officialResults.group_standings || {}).some(val => !val || val.trim() === "");
+
+        // Show K.O. stages if K.O. matches have started/been defined but not all are finished
+        const hasKOMatchesStarted = Object.values(officialResults.r32_matches || {}).some(m => m.matchup && m.matchup.trim() !== "");
+        const hasKOMatchesPending = Object.values(officialResults.r32_matches || {}).some(m => !m.score || m.score.trim() === "") ||
+                                     Object.values(officialResults.r16_matches || {}).some(m => !m.score || m.score.trim() === "") ||
+                                     Object.values(officialResults.r8_matches || {}).some(m => !m.score || m.score.trim() === "") ||
+                                     Object.values(officialResults.r4_matches || {}).some(m => !m.score || m.score.trim() === "") ||
+                                     (!officialResults.r3_4_match || !officialResults.r3_4_match.score || officialResults.r3_4_match.score.trim() === "") ||
+                                     (!officialResults.final_match || !officialResults.final_match.score || officialResults.final_match.score.trim() === "");
+        const showKoStages = hasKOMatchesStarted && hasKOMatchesPending;
+
+        // Show honor list if the final match is defined but the honor list is not fully filled
+        const hasFinalsStarted = officialResults.final_match && officialResults.final_match.matchup && officialResults.final_match.matchup.trim() !== "";
+        const hasHonorListPending = [
+            'honor_champ', 'honor_runner', 'honor_3rd', 'honor_4th',
+            'honor_scorer', 'honor_assists', 'honor_mvp', 'honor_gk', 'honor_young'
+        ].some(key => !officialResults[key] || officialResults[key].trim() === "");
+        const showHonorList = hasFinalsStarted && hasHonorListPending;
+
+        table.classList.toggle('show-group-stage-mobile', showGroupStage);
+        table.classList.toggle('show-group-standings-mobile', showGroupStandings);
+        table.classList.toggle('show-ko-stages-mobile', showKoStages);
+        table.classList.toggle('show-honor-list-mobile', showHonorList);
+    }
+    
     standings.forEach((player, index) => {
         const tr = document.createElement('tr');
         tr.classList.add('clickable-row');
@@ -585,14 +741,25 @@ function renderStandings(standings) {
             rankVal = `3º`;
         }
 
+        const liveAsterisk = hasLiveMatch ? ` <span style="color:var(--color-danger); font-weight:bold; font-size:1.1rem; line-height:0;" title="Puntos provisionales (partido en directo)">*</span>` : '';
+
+        // Helper to format category points: if provisional, show in green with asterisk
+        const formatCell = (fixedVal, provVal) => {
+            const diff = provVal - fixedVal;
+            if (diff > 0) {
+                return `<span class="provisional-score" style="color:var(--color-success); font-weight:700;">${provVal.toFixed(1)}*</span>`;
+            }
+            return fixedVal.toFixed(1);
+        };
+
         tr.innerHTML = `
             <td class="text-center ${rankClass}">${rankVal}</td>
             <td class="player-row-name">${player.name}</td>
-            <td class="text-center bold-score">${player.total.toFixed(1)}</td>
-            <td class="text-center hide-on-mobile">${player.group_stage.toFixed(1)}</td>
-            <td class="text-center hide-on-mobile">${player.group_standings.toFixed(1)}</td>
-            <td class="text-center hide-on-mobile">${player.ko_stages.toFixed(1)}</td>
-            <td class="text-center hide-on-mobile">${player.honor_list.toFixed(1)}</td>
+            <td class="text-center bold-score">${player.fixed.total.toFixed(1)}${liveAsterisk}</td>
+            <td class="text-center hide-on-mobile col-group-stage">${formatCell(player.fixed.group_stage, player.provisional.group_stage)}</td>
+            <td class="text-center hide-on-mobile col-group-standings">${formatCell(player.fixed.group_standings, player.provisional.group_standings)}</td>
+            <td class="text-center hide-on-mobile col-ko-stages">${formatCell(player.fixed.ko_stages, player.provisional.ko_stages)}</td>
+            <td class="text-center hide-on-mobile col-honor-list">${formatCell(player.fixed.honor_list, player.provisional.honor_list)}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -781,12 +948,12 @@ function renderMatches() {
                 `<span class="prediction-badge badge-miss" style="background:rgba(255,255,255,0.03); color:var(--text-muted); border:1px solid rgba(255,255,255,0.08);">Pendiente</span>`;
             
             const ptsColor = (badgeClass === 'badge-exact' || badgeClass === 'badge-diff' || badgeClass === 'badge-sign') ? 'var(--color-success)' : 'var(--text-muted)';
-            const pointsDisplay = isPlayed ? `<span class="pred-player-pts" style="font-weight: 700; min-width: 52px; text-align: right; color: ${ptsColor}; font-size: 0.82rem;">${pointsText}</span>` : '';
+            const pointsDisplay = isPlayed ? `<span class="pred-player-pts" style="color: ${ptsColor};">${pointsText}</span>` : `<span class="pred-player-pts"></span>`;
             
             predictionsHtml += `
                 <div class="pred-player-row">
                     <span class="pred-player-name">${p}</span>
-                    <div style="display:flex; align-items:center; gap:0.6rem;">
+                    <div class="pred-player-values">
                         <span class="pred-player-score">${predDisplay}</span>
                         ${badgeHtml}
                         ${pointsDisplay}
@@ -1105,12 +1272,33 @@ function setupEventListeners() {
 
 // Modal management
 function openPlayerModal(playerName) {
-    const player = calculateStandings().find(p => p.name === playerName);
+    const standings = calculateStandings();
+    const player = standings.find(p => p.name === playerName);
     if (!player) return;
 
+    // Helper to format category points in modal: if provisional, show in green with asterisk
+    const formatModalScore = (fixedVal, provVal) => {
+        const diff = provVal - fixedVal;
+        if (diff > 0) {
+            return `<span class="provisional-score" style="color:var(--color-success); font-weight:700;">${provVal.toFixed(1)}*</span>`;
+        }
+        return fixedVal.toFixed(1);
+    };
+
     document.getElementById('modal-player-name').innerText = `Desglose - ${player.name}`;
-    document.getElementById('modal-total-score').innerText = `${player.total.toFixed(1)} pts`;
-    document.getElementById('modal-fase-score').innerText = `F. Grupos: ${player.group_stage.toFixed(1)} | Posiciones: ${player.group_standings.toFixed(1)} | Eliminatorias: ${(player.ko_stages + player.honor_list).toFixed(1)}`;
+    
+    // Total score
+    const totalScoreHtml = `${formatModalScore(player.fixed.total, player.provisional.total)} <span style="font-size: 1.1rem; font-weight: 500; color: var(--text-muted);">pts</span>`;
+    document.getElementById('modal-total-score').innerHTML = totalScoreHtml;
+    
+    const gsText = formatModalScore(player.fixed.group_stage, player.provisional.group_stage);
+    const posText = formatModalScore(player.fixed.group_standings, player.provisional.group_standings);
+    
+    const elimFixed = player.fixed.ko_stages + player.fixed.honor_list;
+    const elimProv = player.provisional.ko_stages + player.provisional.honor_list;
+    const elimText = formatModalScore(elimFixed, elimProv);
+    
+    document.getElementById('modal-fase-score').innerHTML = `F. Grupos: ${gsText} | Posiciones: ${posText} | Eliminatorias: ${elimText}`;
 
     // Render Group Matches predictions table
     const groupsBody = document.getElementById('modal-groups-body');
@@ -1139,17 +1327,36 @@ function openPlayerModal(playerName) {
                 badgeText = "Signo 1X2 (0.5)";
                 badgeClass = "badge-sign";
             }
+            if (item.isProvisional) {
+                badgeText += "*";
+            }
             scoreBadge = `<span class="prediction-badge ${badgeClass}">${badgeText}</span>`;
         }
 
         const flagHome = getFlagHtml(item.casa, false);
         const flagAway = getFlagHtml(item.fuera, false);
 
+        // Parse prediction to display it cleanly (e.g. "2-1 (1)" instead of "1|2-1")
+        let predDisplay = item.pred;
+        if (item.pred && item.pred.includes('|')) {
+            const parts = item.pred.split('|');
+            predDisplay = `${parts[1]} <span class="text-muted" style="font-size:0.75rem;">(${parts[0]})</span>`;
+        }
+
+        const casaAbbr = getCountryAbbreviation(item.casa);
+        const fueraAbbr = getCountryAbbreviation(item.fuera);
+
         tr.innerHTML = `
-            <td><small class="text-muted">${item.jor}</small> ${flagHome} ${item.casa} - ${item.fuera} ${flagAway}</td>
-            <td class="text-center">${item.pred}</td>
+            <td class="text-center"><small class="text-muted">${item.jor}</small></td>
+            <td style="white-space: nowrap;">
+                ${flagHome} 
+                <span class="modal-team-name" title="${item.casa}">${casaAbbr}</span> 
+                - 
+                <span class="modal-team-name" title="${item.fuera}">${fueraAbbr}</span> 
+                ${flagAway}
+            </td>
+            <td class="text-center">${predDisplay}</td>
             <td class="text-center"><strong>${item.actual}</strong></td>
-            <td class="text-center text-muted">${item.points.toFixed(0)}</td>
             <td class="text-center">${scoreBadge}</td>
         `;
         groupsBody.appendChild(tr);
@@ -1164,12 +1371,35 @@ function openPlayerModal(playerName) {
 
     // Standings Predictions
     const standingsCard = createKOCard("Predicciones de Grupos (1º al 4º)");
+    const dynamicStandingsData = calculateGroupStandings();
+    
     Object.entries(playerPreds.group_standings || {}).forEach(([item, teamPred]) => {
-        const actual = results.group_standings[item] || '';
-        const isCorrect = actual && actual.toLowerCase() === teamPred.toLowerCase();
-        const pts = isCorrect ? (item.startsWith("1º") || item.startsWith("2º") ? 1.0 : 0.5) : 0.0;
+        const official = results.group_standings[item] || '';
+        let actual = official;
+        let isCorrect = official && official.toLowerCase() === teamPred.toLowerCase();
+        let pts = isCorrect ? (item.startsWith("1º") || item.startsWith("2º") ? 1.0 : 0.5) : 0.0;
+        let isProv = false;
         
-        addKOItem(standingsCard, item, teamPred, actual, pts);
+        if (!official || official.trim() === "") {
+            const match = item.match(/^(\d)º GRUPO ([A-L])$/);
+            if (match) {
+                const posNum = parseInt(match[1]);
+                const groupLetter = match[2];
+                const groupTeams = dynamicStandingsData.standingsByGroup[groupLetter] || [];
+                const provisionalTeam = groupTeams[posNum - 1] ? groupTeams[posNum - 1].name : '';
+                
+                if (provisionalTeam && provisionalTeam.trim() !== "") {
+                    actual = provisionalTeam;
+                    isCorrect = String(provisionalTeam).toLowerCase() === String(teamPred).toLowerCase();
+                    pts = isCorrect ? (item.startsWith("1º") || item.startsWith("2º") ? 1.0 : 0.5) : 0.0;
+                    isProv = true;
+                }
+            }
+        }
+        
+        const label = item + (isProv ? " *" : "");
+        const actualVal = actual ? actual + (isProv ? " (Prov.)" : "") : "-";
+        addKOItem(standingsCard, label, teamPred, actualVal, pts);
     });
     koList.appendChild(standingsCard);
 
@@ -1432,6 +1662,63 @@ function closePlayerModal() {
 
 
 
+
+// Helper: get 3-letter abbreviation for Spanish country names (FIFA codes)
+function getCountryAbbreviation(name) {
+    if (!name) return "";
+    const cleanName = name.trim();
+    const abbreviations = {
+        'México': 'MEX',
+        'Sudáfrica': 'RSA',
+        'Corea del Sur': 'KOR',
+        'República Checa': 'CZE',
+        'Canadá': 'CAN',
+        'Bosnia y Herzegovina': 'BIH',
+        'Catar': 'QAT',
+        'Suiza': 'SUI',
+        'Brasil': 'BRA',
+        'Marruecos': 'MAR',
+        'Haití': 'HAI',
+        'Escocia': 'SCO',
+        'Estados Unidos': 'USA',
+        'Paraguay': 'PAR',
+        'Australia': 'AUS',
+        'Turquía': 'TUR',
+        'Alemania': 'GER',
+        'Curazao': 'CUW',
+        'Costa de Marfil': 'CIV',
+        'Ecuador': 'ECU',
+        'Países Bajos': 'NED',
+        'Japón': 'JPN',
+        'Suecia': 'SWE',
+        'Túnez': 'TUN',
+        'Bélgica': 'BEL',
+        'Egipto': 'EGY',
+        'Irán': 'IRN',
+        'Nueva Zelanda': 'NZL',
+        'España': 'ESP',
+        'Cabo Verde': 'CPV',
+        'Arabia Saudita': 'KSA',
+        'Uruguay': 'URU',
+        'Francia': 'FRA',
+        'Senegal': 'SEN',
+        'Irak': 'IRQ',
+        'Noruega': 'NOR',
+        'Argentina': 'ARG',
+        'Argelia': 'ALG',
+        'Austria': 'AUT',
+        'Jordania': 'JOR',
+        'Portugal': 'POR',
+        'RD Congo': 'COD',
+        'Uzbekistán': 'UZB',
+        'Colombia': 'COL',
+        'Inglaterra': 'ENG',
+        'Croacia': 'CRO',
+        'Ghana': 'GHA',
+        'Panamá': 'PAN'
+    };
+    return abbreviations[cleanName] || cleanName;
+}
 
 // Helper: get HTML for country flag image from flagcdn
 function getFlagHtml(countryName, isLarge = false) {
@@ -1923,10 +2210,10 @@ function getPlayerColor(name, index) {
         "Rodri": "hsl(263, 90%, 60%)",
         "Koldo": "hsl(142, 72%, 45%)",
         "Joel": "hsl(38, 92%, 50%)",
-        "ALVARO": "hsl(328, 80%, 55%)",
+        "Álvaro": "hsl(328, 80%, 55%)",
         "Imanol": "hsl(200, 90%, 55%)",
         "André": "hsl(280, 80%, 65%)",
-        "Raul": "hsl(15, 90%, 55%)"
+        "Raúl": "hsl(15, 90%, 55%)"
     };
     if (predefined[name]) return predefined[name];
     // Fallback: cycle through HSL colors
@@ -2297,6 +2584,390 @@ function setupLiveRefresh() {
             refreshResults(true); // Force API call on manual click!
         });
         refreshBtn.dataset.listenerBound = 'true';
+    }
+}
+
+// Calculate the actual group standings and best thirds dynamically based on matches played
+function calculateGroupStandings() {
+    const teamToGroup = {};
+    const groupTeams = {};
+    let currentGroup = null;
+    
+    // Parse matches to determine team-to-group mappings
+    porraData.matches.forEach(m => {
+        if (m.jor === "J1") {
+            if (m.grupo && typeof m.grupo === 'string' && m.grupo.startsWith("Grupo ")) {
+                currentGroup = m.grupo.replace("Grupo ", ""); // "A", "B", etc.
+            }
+            if (currentGroup) {
+                if (!groupTeams[currentGroup]) groupTeams[currentGroup] = [];
+                if (!groupTeams[currentGroup].includes(m.casa)) groupTeams[currentGroup].push(m.casa);
+                if (!groupTeams[currentGroup].includes(m.fuera)) groupTeams[currentGroup].push(m.fuera);
+                teamToGroup[m.casa] = currentGroup;
+                teamToGroup[m.fuera] = currentGroup;
+            }
+        }
+    });
+
+    // Initialize standings structure for each team
+    const teamStats = {};
+    Object.keys(teamToGroup).forEach(team => {
+        teamStats[team] = {
+            name: team,
+            group: teamToGroup[team],
+            pj: 0,
+            g: 0,
+            e: 0,
+            p: 0,
+            gf: 0,
+            gc: 0,
+            dg: 0,
+            pts: 0
+        };
+    });
+
+    // Process matches and calculate stats, tracking live/provisional groups
+    const groupLiveMatches = {};
+    Object.keys(groupTeams).forEach(g => {
+        groupLiveMatches[g] = false;
+    });
+
+    porraData.matches.forEach(m => {
+        const score = results.matches[m.id];
+        const group = teamToGroup[m.casa];
+        if (!group) return;
+
+        if (provisionalMatches && provisionalMatches.has(String(m.id))) {
+            groupLiveMatches[group] = true;
+        }
+
+        if (score && score.trim() !== "") {
+            const parts = score.split("-");
+            if (parts.length === 2) {
+                const h = parseInt(parts[0]);
+                const a = parseInt(parts[1]);
+                if (!isNaN(h) && !isNaN(a)) {
+                    const statsH = teamStats[m.casa];
+                    const statsA = teamStats[m.fuera];
+                    
+                    statsH.pj++;
+                    statsA.pj++;
+                    statsH.gf += h;
+                    statsH.gc += a;
+                    statsA.gf += a;
+                    statsA.gc += h;
+                    statsH.dg = statsH.gf - statsH.gc;
+                    statsA.dg = statsA.gf - statsA.gc;
+
+                    if (h > a) {
+                        statsH.pts += 3;
+                        statsH.g++;
+                        statsA.p++;
+                    } else if (h < a) {
+                        statsA.pts += 3;
+                        statsA.g++;
+                        statsH.p++;
+                    } else {
+                        statsH.pts += 1;
+                        statsA.pts += 1;
+                        statsH.e++;
+                        statsA.e++;
+                    }
+                }
+            }
+        }
+    });
+
+    // Sort teams within each group (Pts, DG, GF, Name)
+    const standingsByGroup = {};
+    Object.keys(groupTeams).forEach(g => {
+        const teams = groupTeams[g].map(name => teamStats[name]);
+        teams.sort((a, b) => {
+            if (b.pts !== a.pts) return b.pts - a.pts;
+            if (b.dg !== a.dg) return b.dg - a.dg;
+            if (b.gf !== a.gf) return b.gf - a.gf;
+            return a.name.localeCompare(b.name);
+        });
+        standingsByGroup[g] = teams;
+    });
+
+    // Calculate best thirds
+    const thirds = [];
+    Object.keys(standingsByGroup).forEach(g => {
+        const team = standingsByGroup[g][2]; // 3rd placed team (index 2)
+        if (team) {
+            thirds.push(team);
+        }
+    });
+
+    // Sort 3rd placed teams (Pts, DG, GF, Name)
+    thirds.sort((a, b) => {
+        if (b.pts !== a.pts) return b.pts - a.pts;
+        if (b.dg !== a.dg) return b.dg - a.dg;
+        if (b.gf !== a.gf) return b.gf - a.gf;
+        return a.name.localeCompare(b.name);
+    });
+
+    return {
+        standingsByGroup: standingsByGroup,
+        groupLiveMatches: groupLiveMatches,
+        thirds: thirds
+    };
+}
+
+// Get predicted position of a team for a player (e.g. "1º", "2º", etc.)
+function getPlayerPredictedPosition(playerName, teamName, groupLetter) {
+    if (!playerName || playerName === 'none') return '';
+    const playerPreds = porraData.predictions[playerName];
+    if (!playerPreds || !playerPreds.group_standings) return '';
+    
+    let predictedPos = '';
+    Object.entries(playerPreds.group_standings).forEach(([key, val]) => {
+        if (val && val.toLowerCase() === teamName.toLowerCase() && key.includes(`GRUPO ${groupLetter}`)) {
+            predictedPos = key.split(" ")[0]; // "1º", "2º", etc.
+        }
+    });
+    return predictedPos;
+}
+
+// Render dynamic group standings tables and best thirds table
+function renderGroupTables() {
+    const grid = document.getElementById('groups-grid');
+    const thirdsBody = document.getElementById('thirds-body');
+    const thirdsLiveIndicator = document.getElementById('thirds-live-indicator');
+    
+    if (!grid || !thirdsBody) return;
+
+    // Calculate positions
+    const data = calculateGroupStandings();
+    const groupStandings = data.standingsByGroup;
+    const groupLiveMatches = data.groupLiveMatches;
+    const thirds = data.thirds;
+
+    // Render group cards
+    grid.innerHTML = '';
+    
+    // Check if there are any live matches in any group stage match
+    let anyLiveMatch = false;
+    Object.values(groupLiveMatches).forEach(val => {
+        if (val) anyLiveMatch = true;
+    });
+
+    if (thirdsLiveIndicator) {
+        thirdsLiveIndicator.style.display = anyLiveMatch ? 'inline-block' : 'none';
+    }
+
+    // Iterate through groups A to L
+    const groupLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+    groupLetters.forEach(letter => {
+        const teams = groupStandings[letter] || [];
+        const isGroupLive = groupLiveMatches[letter] || false;
+        
+        const card = document.createElement('div');
+        card.classList.add('group-card');
+        card.dataset.groupLetter = letter;
+        if (isGroupLive) {
+            card.classList.add('live-group-highlight');
+        }
+
+        const liveLabel = isGroupLive ? 
+            `<span class="provisional-match-label" style="font-size: 0.72rem; animation: pulseLabel 2s infinite;"><i class="fa-solid fa-arrows-rotate"></i> Temporal (API)</span>` : 
+            '';
+
+        let tableRowsHtml = '';
+        teams.forEach((team, index) => {
+            const pos = index + 1;
+            const flag = getFlagHtml(team.name, false);
+            const teamAbbr = getCountryAbbreviation(team.name);
+
+            // Highlighting qualification positions (1st and 2nd qualify for R32)
+            let posClass = '';
+            if (pos <= 2) {
+                posClass = 'style="border-left: 3px solid var(--color-success); padding-left: 0.5rem;"';
+            } else if (pos === 3) {
+                posClass = 'style="border-left: 3px solid var(--color-accent); padding-left: 0.5rem;"';
+            } else {
+                posClass = 'style="border-left: 3px solid transparent; padding-left: 0.5rem;"';
+            }
+
+            tableRowsHtml += `
+                <tr>
+                    <td class="text-center" ${posClass}><strong>${pos}º</strong></td>
+                    <td style="white-space: nowrap;">
+                        ${flag}
+                        <span class="full-country-name group-team-name" title="${team.name}">${team.name}</span>
+                        <span class="short-country-name" title="${team.name}">${teamAbbr}</span>
+                    </td>
+                    <td class="text-center bold-score">${team.pts}</td>
+                    <td class="text-center" style="color:${team.dg > 0 ? 'var(--color-success)' : (team.dg < 0 ? 'var(--color-danger)' : 'inherit')}">${team.dg > 0 ? '+' : ''}${team.dg}</td>
+                    <td class="text-center">${team.pj}</td>
+                </tr>
+            `;
+        });
+
+        // Build predictions drawer for all players (similar to match card)
+        let predictionsHtml = '';
+        porraData.players.forEach(p => {
+            const playerPreds = porraData.predictions[p];
+            const pred1 = playerPreds.group_standings[`1º GRUPO ${letter}`] || '';
+            const pred2 = playerPreds.group_standings[`2º GRUPO ${letter}`] || '';
+            const pred3 = playerPreds.group_standings[`3º GRUPO ${letter}`] || '';
+            const pred4 = playerPreds.group_standings[`4º GRUPO ${letter}`] || '';
+
+            const getActualTeam = (posNum) => {
+                const official = results.group_standings[`${posNum}º GRUPO ${letter}`];
+                if (official && official.trim() !== "") return official;
+                return teams[posNum - 1] ? teams[posNum - 1].name : '';
+            };
+
+            const actual1 = getActualTeam(1);
+            const actual2 = getActualTeam(2);
+            const actual3 = getActualTeam(3);
+            const actual4 = getActualTeam(4);
+
+            const isCorrect1 = pred1 && actual1 && pred1.toLowerCase() === actual1.toLowerCase();
+            const isCorrect2 = pred2 && actual2 && pred2.toLowerCase() === actual2.toLowerCase();
+            const isCorrect3 = pred3 && actual3 && pred3.toLowerCase() === actual3.toLowerCase();
+            const isCorrect4 = pred4 && actual4 && pred4.toLowerCase() === actual4.toLowerCase();
+
+            let groupPoints = 0.0;
+            if (actual1) {
+                if (isCorrect1) groupPoints += 1.0;
+                if (isCorrect2) groupPoints += 1.0;
+                if (isCorrect3) groupPoints += 0.5;
+                if (isCorrect4) groupPoints += 0.5;
+            }
+
+            const abbr1 = getCountryAbbreviation(pred1);
+            const abbr2 = getCountryAbbreviation(pred2);
+            const abbr3 = getCountryAbbreviation(pred3);
+            const abbr4 = getCountryAbbreviation(pred4);
+
+            const bubbleHtml1 = `<span class="pred-group-team ${isCorrect1 ? 'correct' : ''}" title="1º: ${pred1}">${abbr1}</span>`;
+            const bubbleHtml2 = `<span class="pred-group-team ${isCorrect2 ? 'correct' : ''}" title="2º: ${pred2}">${abbr2}</span>`;
+            const bubbleHtml3 = `<span class="pred-group-team ${isCorrect3 ? 'correct' : ''}" title="3º: ${pred3}">${abbr3}</span>`;
+            const bubbleHtml4 = `<span class="pred-group-team ${isCorrect4 ? 'correct' : ''}" title="4º: ${pred4}">${abbr4}</span>`;
+
+            const ptsColor = groupPoints > 0 ? 'var(--color-success)' : 'var(--text-muted)';
+            const pointsDisplay = `<span class="pred-player-pts" style="color: ${ptsColor}; font-size: 0.82rem; font-weight: 700; width: 60px; text-align: right; flex-shrink: 0;">+${groupPoints.toFixed(1)} pts</span>`;
+
+            predictionsHtml += `
+                <div class="pred-player-row">
+                    <span class="pred-player-name">${p}</span>
+                    <div class="pred-player-values" style="width: 250px; justify-content: flex-end; gap: 0.4rem; display: flex; align-items: center; flex-shrink: 0;">
+                        ${bubbleHtml1}
+                        ${bubbleHtml2}
+                        ${bubbleHtml3}
+                        ${bubbleHtml4}
+                        ${pointsDisplay}
+                    </div>
+                </div>
+            `;
+        });
+
+        const predictionsDrawer = `
+            <div class="group-predictions-drawer">
+                <div style="font-size:0.75rem; color:var(--color-accent); font-weight:700; text-transform:uppercase; margin-bottom:0.5rem; letter-spacing:0.5px;">Pronósticos de Posiciones</div>
+                <div class="predictions-list">
+                    ${predictionsHtml}
+                </div>
+            </div>
+        `;
+
+        card.innerHTML = `
+            <div class="group-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; border-bottom:1px solid var(--border-color); padding-bottom:0.5rem;">
+                <h3 style="font-family:var(--font-heading); font-size:1.15rem; font-weight:700; color:#fff; display:flex; align-items:center; gap:0.5rem;">
+                    Grupo ${letter}
+                    <span class="expand-icon" style="font-size:0.85rem; color:var(--text-muted);"><i class="fa-solid fa-chevron-down"></i></span>
+                </h3>
+                ${liveLabel}
+            </div>
+            <div class="table-responsive">
+                <table class="table table-compact" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th class="text-center" style="width:40px;">Pos</th>
+                            <th>Equipo</th>
+                            <th class="text-center" style="width:35px;">Pts</th>
+                            <th class="text-center" style="width:35px;">DG</th>
+                            <th class="text-center" style="width:30px;">PJ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRowsHtml}
+                    </tbody>
+                </table>
+            </div>
+            ${predictionsDrawer}
+        `;
+
+        card.addEventListener('click', () => toggleGroupCard(card));
+        grid.appendChild(card);
+    });
+
+    // Render Best Thirds table
+    thirdsBody.innerHTML = '';
+    thirds.forEach((team, index) => {
+        const pos = index + 1;
+        const flag = getFlagHtml(team.name, false);
+        const teamAbbr = getCountryAbbreviation(team.name);
+        const isLive = groupLiveMatches[team.group] || false;
+        
+        let rowClass = '';
+        let posBadge = '';
+        
+        if (pos <= 8) {
+            // Qualify zone
+            rowClass = 'style="background: rgba(16, 185, 129, 0.05);"';
+            posBadge = `<span class="badge badge-exact" style="font-size:0.75rem; padding: 0.15rem 0.4rem;">${pos}</span>`;
+        } else {
+            // Eliminated zone
+            rowClass = 'style="background: rgba(239, 68, 68, 0.02); opacity: 0.85;"';
+            posBadge = `<span class="badge badge-miss" style="font-size:0.75rem; padding: 0.15rem 0.4rem;">${pos}</span>`;
+        }
+
+        const liveAsterisk = isLive ? `<span style="color:#ef4444; font-weight:bold;" title="Grupo con partido en directo">*</span>` : '';
+
+        thirdsBody.innerHTML += `
+            <tr ${rowClass}>
+                <td class="text-center">${posBadge}</td>
+                <td class="text-center"><strong>${team.group}${liveAsterisk}</strong></td>
+                <td style="white-space: nowrap;">
+                    ${flag}
+                    <span class="full-country-name group-team-name" title="${team.name}">${team.name}</span>
+                    <span class="short-country-name" title="${team.name}">${teamAbbr}</span>
+                </td>
+                <td class="text-center bold-score">${team.pts}</td>
+                <td class="text-center" style="color:${team.dg > 0 ? 'var(--color-success)' : (team.dg < 0 ? 'var(--color-danger)' : 'inherit')}">${team.dg > 0 ? '+' : ''}${team.dg}</td>
+                <td class="text-center">${team.pj}</td>
+                <td class="text-center">${team.gf}</td>
+                <td class="text-center">${team.gc}</td>
+            </tr>
+        `;
+    });
+}
+
+// Toggle group card predictions drawer (and synchronize row heights/expansion)
+function toggleGroupCard(card) {
+    const isExpanded = card.classList.contains('expanded');
+    
+    // Find all group cards in the same visual row (within a 15px threshold)
+    const targetOffsetTop = card.offsetTop;
+    const cardsInRow = [];
+    
+    document.querySelectorAll('.group-card').forEach(other => {
+        if (Math.abs(other.offsetTop - targetOffsetTop) < 15) {
+            cardsInRow.push(other);
+        }
+    });
+
+    if (isExpanded) {
+        cardsInRow.forEach(c => c.classList.remove('expanded'));
+    } else {
+        // Collapse all group cards first
+        document.querySelectorAll('.group-card').forEach(c => c.classList.remove('expanded'));
+        // Expand row cards
+        cardsInRow.forEach(c => c.classList.add('expanded'));
     }
 }
 

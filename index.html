@@ -42,6 +42,9 @@
                     <button class="nav-btn" data-tab="partidos">
                         <i class="fa-solid fa-circle-play"></i> Partidos
                     </button>
+                    <button class="nav-btn" data-tab="tablas">
+                        <i class="fa-solid fa-table-cells"></i> Grupos
+                    </button>
                     <button class="nav-btn" data-tab="eliminatorias">
                         <i class="fa-solid fa-sitemap"></i> Fase K.O.
                     </button>
@@ -71,10 +74,10 @@
                                 <th class="text-center">Pos</th>
                                 <th>Jugador</th>
                                 <th class="text-center">Pts Totales</th>
-                                <th class="text-center hide-on-mobile">F. Grupos</th>
-                                <th class="text-center hide-on-mobile">Pos. Grupos</th>
-                                <th class="text-center hide-on-mobile">Fases K.O.</th>
-                                <th class="text-center hide-on-mobile">Cuadro Honor</th>
+                                <th class="text-center hide-on-mobile col-group-stage">F. Grupos</th>
+                                <th class="text-center hide-on-mobile col-group-standings">Pos. Grupos</th>
+                                <th class="text-center hide-on-mobile col-ko-stages">Fases K.O.</th>
+                                <th class="text-center hide-on-mobile col-honor-list">Cuadro Honor</th>
                             </tr>
                         </thead>
                         <tbody id="standings-body">
@@ -234,6 +237,57 @@
             </div>
         </section>
 
+        <!-- 📊 TABLAS DE GRUPOS TAB -->
+        <section id="tablas" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Tablas de Posición - Fase de Grupos</h2>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -0.5rem; margin-bottom: 0.5rem; padding: 0 0.5rem;">
+                    Visualiza las posiciones reales en vivo de cada grupo. Haz clic en la tarjeta de cualquier grupo para desplegar y ver los pronósticos de todos los participantes.
+                </p>
+            </div>
+
+            <!-- Groups Standings Grid -->
+            <div class="matches-grid" id="groups-grid" style="grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
+                <!-- Dynamically populated group tables -->
+            </div>
+
+            <!-- Best Thirds Card -->
+            <div class="card" style="margin-top: 2rem;">
+                <div class="card-header" style="border-bottom: none; padding-bottom: 0; margin-bottom: 0.5rem;">
+                    <h3 style="font-family: var(--font-heading); font-size: 1.25rem; color: var(--color-accent); font-weight: 700;">
+                        <i class="fa-solid fa-medal"></i> Clasificación de los Mejores Terceros
+                    </h3>
+                    <span class="badge" id="thirds-live-indicator" style="display: none; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);">
+                        <i class="fa-solid fa-arrows-rotate fa-spin"></i> Provisional
+                    </span>
+                </div>
+                <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1rem; padding: 0 0.5rem;">
+                    Los 8 mejores terceros clasificados (en <span style="color: var(--color-success); font-weight: 700;">verde</span>) avanzan a Dieciseisavos de Final junto a los dos primeros de cada grupo.
+                </p>
+                <div class="table-responsive">
+                    <table class="table table-compact" id="thirds-table">
+                        <thead>
+                            <tr>
+                                <th class="text-center">Pos</th>
+                                <th class="text-center">Grupo</th>
+                                <th>Equipo</th>
+                                <th class="text-center">Pts</th>
+                                <th class="text-center">DG</th>
+                                <th class="text-center">PJ</th>
+                                <th class="text-center">GF</th>
+                                <th class="text-center">GC</th>
+                            </tr>
+                        </thead>
+                        <tbody id="thirds-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
         <!-- ⚙️ ADMIN PANEL -->
         <section id="admin" class="tab-content">
             <div style="max-width: 650px; margin: 0 auto;">
@@ -294,10 +348,10 @@
                         <table class="table table-compact">
                             <thead>
                                 <tr>
+                                    <th class="text-center" style="width: 50px;">Jor</th>
                                     <th>Partido</th>
                                     <th class="text-center">Predicción</th>
                                     <th class="text-center">Real</th>
-                                    <th class="text-center">Pts brutos</th>
                                     <th class="text-center">Pts netos</th>
                                 </tr>
                             </thead>
