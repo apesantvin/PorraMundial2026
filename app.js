@@ -2706,7 +2706,7 @@ function translateTeam(teamObj) {
     return teamObj.shortName || teamObj.name || "";
 }
 
-const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED"]);
+const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "LIVE"]);
 
 async function fetchAndProcessLiveResults() {
     const apiKey = 'fca19012e1774fee9c2d4382feb0325b';
