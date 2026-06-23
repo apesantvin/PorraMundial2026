@@ -36,22 +36,22 @@
             </div>
             <div class="nav-container-wrapper">
                 <nav class="app-nav">
-                    <button class="nav-btn active" data-tab="clasificacion">
+                    <button class="nav-btn active" data-tab="clasificacion" title="Tabla de posiciones de la porra y evolución de puntos">
                         <i class="fa-solid fa-ranking-star"></i> Clasificación
                     </button>
-                    <button class="nav-btn" data-tab="partidos">
+                    <button class="nav-btn" data-tab="partidos" title="Predicciones y resultados de los partidos de la Fase de Grupos">
                         <i class="fa-solid fa-circle-play"></i> Partidos
                     </button>
-                    <button class="nav-btn" data-tab="tablas">
+                    <button class="nav-btn" data-tab="tablas" title="Tablas de posición oficiales y provisionales de los grupos (A-L)">
                         <i class="fa-solid fa-table-cells"></i> Grupos
                     </button>
-                    <button class="nav-btn" data-tab="eliminatorias">
+                    <button class="nav-btn" data-tab="eliminatorias" title="Cruces, predicciones y resultados de la fase de eliminación directa (Dieciseisavos a Final)">
                         <i class="fa-solid fa-sitemap"></i> Fase K.O.
                     </button>
-                    <button class="nav-btn" data-tab="reglas">
+                    <button class="nav-btn" data-tab="reglas" title="Explicación detallada de cómo se calculan los puntos y ejemplos prácticos">
                         <i class="fa-solid fa-book-open"></i> Reglas de Puntuación
                     </button>
-                    <button class="nav-btn" data-tab="admin">
+                    <button class="nav-btn" data-tab="admin" title="Panel de administración para consolidador de API y descargas de resultados">
                         <i class="fa-solid fa-sliders"></i> Admin
                     </button>
                 </nav>
@@ -71,13 +71,13 @@
                     <table class="table" id="standings-table">
                         <thead>
                             <tr>
-                                <th class="text-center">Pos</th>
+                                <th class="text-center" title="Posición actual en la clasificación general (basada en puntos fijos)">Pos</th>
                                 <th>Jugador</th>
-                                <th class="text-center">Pts Totales</th>
-                                <th class="text-center hide-on-mobile col-group-stage">F. Grupos</th>
-                                <th class="text-center hide-on-mobile col-group-standings">Pos. Grupos</th>
-                                <th class="text-center hide-on-mobile col-ko-stages">Fases K.O.</th>
-                                <th class="text-center hide-on-mobile col-honor-list">Cuadro Honor</th>
+                                <th class="text-center" title="Puntos totales consolidados de partidos finalizados y fases resueltas (no incluye provisionales)">Pts Totales</th>
+                                <th class="text-center hide-on-mobile col-group-stage" title="Puntos de predicciones de partidos de la Fase de Grupos. En verde con * se muestran los provisionales en vivo">F. Grupos</th>
+                                <th class="text-center hide-on-mobile col-group-standings" title="Puntos por acertar posiciones de grupos y clasificados. En verde con * se muestran los provisionales">Pos. Grupos</th>
+                                <th class="text-center hide-on-mobile col-ko-stages" title="Puntos por aciertos en las rondas de eliminación directa (Dieciseisavos a Final). En verde con * se muestran los provisionales">Fases K.O.</th>
+                                <th class="text-center hide-on-mobile col-honor-list" title="Puntos por acertar Campeón, Subcampeón, 3º, 4º y categorías especiales (Goleador, MVP, etc.)">Cuadro Honor</th>
                             </tr>
                         </thead>
                         <tbody id="standings-body">
@@ -116,18 +116,7 @@
 
         <!-- 🏆 ELIMINATORIAS TAB -->
         <section id="eliminatorias" class="tab-content">
-            <div class="filter-bar">
-                <div class="filters" id="ko-filters">
-                    <button class="filter-btn ko-filter-btn active" data-kofilter="all">Todos</button>
-                    <button class="filter-btn ko-filter-btn" data-kofilter="r32">Dieciseisavos</button>
-                    <button class="filter-btn ko-filter-btn" data-kofilter="r16">Octavos</button>
-                    <button class="filter-btn ko-filter-btn" data-kofilter="r8">Cuartos</button>
-                    <button class="filter-btn ko-filter-btn" data-kofilter="r4">Semifinales</button>
-                    <button class="filter-btn ko-filter-btn" data-kofilter="finales">Finales</button>
-                </div>
-            </div>
-
-            <div class="matches-grid" id="ko-matches-grid">
+            <div class="ko-bracket-container" id="ko-bracket-container">
                 <!-- Populated dynamically via JS -->
             </div>
         </section>

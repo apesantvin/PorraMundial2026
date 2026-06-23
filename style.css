@@ -1792,4 +1792,214 @@ span.placeholder-flag i {
     }
 }
 
+/* ==========================================================================
+   Fase K.O. Horizontal Bracket Styles
+   ========================================================================== */
+
+/* Bracket container with horizontal scroll */
+.ko-bracket-container {
+    display: flex;
+    gap: 4rem;
+    overflow-x: auto;
+    padding: 2rem 1.5rem 3.5rem 1.5rem;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    align-items: stretch;
+    min-height: 1850px;
+    background: rgba(15, 23, 42, 0.4);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+    box-shadow: inset 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Bracket Column */
+.ko-bracket-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 170px;
+    max-width: 200px;
+    flex-grow: 1;
+}
+
+/* Column Header */
+.ko-column-header {
+    text-align: center;
+    margin-bottom: 2rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.ko-column-header h3 {
+    font-family: var(--font-header);
+    font-size: 1.15rem;
+    color: #fff;
+    margin: 0;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+.ko-column-header span {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* Column Matches container */
+.ko-column-matches {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    position: relative;
+}
+
+/* Match Pair wrapper */
+.ko-match-pair {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    flex-grow: 1;
+    position: relative;
+    padding: 0;
+}
+
+/* Bracket Match Card */
+.ko-bracket-match {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.5rem 0.6rem;
+    box-shadow: var(--shadow-main);
+    position: relative;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    height: 84px; /* Fixed height for exact vertical alignments */
+    box-sizing: border-box;
+    z-index: 2; /* Keep cards above connection lines */
+}
+.ko-bracket-match:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
+    background: rgba(30, 41, 59, 0.95);
+}
+
+/* Match header within bracket card */
+.ko-match-card-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 0.25rem;
+    font-weight: 600;
+}
+
+/* Match teams layout */
+.ko-match-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    justify-content: center;
+    flex-grow: 1;
+}
+.ko-match-team-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    line-height: 1.2;
+}
+.ko-match-team-info {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ko-match-team-info .flag-img {
+    width: 20px;
+    height: auto;
+    border-radius: 2px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.ko-match-team-info .placeholder-flag {
+    width: 20px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+.ko-match-team-score {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #fff;
+    min-width: 15px;
+    text-align: right;
+}
+
+/* Match footer (status info - hidden/unused in compact layout) */
+.ko-match-card-footer {
+    display: none;
+}
+
+/* Bracket connection lines */
+
+/* Horizontal line extending right from every match card */
+.ko-bracket-column:not([data-round="finales"]) .ko-bracket-match::after {
+    content: "";
+    position: absolute;
+    right: -2rem; /* Half of gap (4rem / 2) */
+    top: 50%;
+    width: 2rem;
+    height: 2px;
+    background: var(--border-color);
+    z-index: 1;
+}
+
+/* Horizontal line entering left of every match card in later rounds */
+.ko-bracket-column:not([data-round="r32"]) .ko-bracket-match::before {
+    content: "";
+    position: absolute;
+    left: -2rem;
+    top: 50%;
+    width: 2rem;
+    height: 2px;
+    background: var(--border-color);
+    z-index: 1;
+}
+
+/* Vertical line connecting pairs */
+.ko-bracket-column:not([data-round="finales"]) .ko-match-pair::after {
+    content: "";
+    position: absolute;
+    right: -2rem;
+    /* Aligns exactly at vertical centers of the two match cards (25% and 75% height) */
+    top: 25%;
+    bottom: 25%;
+    width: 2px;
+    background: var(--border-color);
+    z-index: 1;
+}
+
+
+/* Horizontal line extending right from the vertical line to meet the next round */
+.ko-bracket-column:not([data-round="finales"]) .ko-match-pair::before {
+    content: "";
+    position: absolute;
+    right: -4rem; /* Full gap */
+    top: 50%;
+    width: 2rem;
+    height: 2px;
+    background: var(--border-color);
+    z-index: 1;
+}
+
+/* Helper class to hide connection lines on specific match cards (like the 3rd place match) */
+.ko-bracket-match.no-connectors::before,
+.ko-bracket-match.no-connectors::after {
+    display: none !important;
+}
+
+
+
 

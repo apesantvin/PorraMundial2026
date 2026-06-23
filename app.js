@@ -5,7 +5,6 @@ let officialResults = null;
 const provisionalMatches = new Set(); // Track matches loaded dynamically from the API
 let activeTab = 'clasificacion';
 let currentFilter = 'all';
-let currentKOFilter = 'all';
 let evolutionChart = null;
 
 // Merges cached live results into the in-memory results object
@@ -29,6 +28,7 @@ function mergeLiveCache() {
         // Merge K.O. stages
         const stages = ['r32_matches', 'r16_matches', 'r8_matches', 'r4_matches'];
         stages.forEach(stage => {
+            if (typeof isStageActive === 'function' && !isStageActive(stage)) return;
             if (parsedCache[stage]) {
                 for (const [key, matchObj] of Object.entries(parsedCache[stage])) {
                     if (matchObj && matchObj.score && matchObj.score.trim() !== "") {
@@ -46,6 +46,7 @@ function mergeLiveCache() {
         // Single matches (final and 3-4 place)
         const singleMatches = ['r3_4_match', 'final_match'];
         singleMatches.forEach(key => {
+            if (typeof isStageActive === 'function' && !isStageActive(key)) return;
             if (parsedCache[key] && parsedCache[key].score && parsedCache[key].score.trim() !== "") {
                 if (results[key] && (!officialResults[key] || !officialResults[key].score || officialResults[key].score.trim() === "")) {
                     results[key].score = parsedCache[key].score;
@@ -59,6 +60,7 @@ function mergeLiveCache() {
         // Qualified teams lists (r32_teams, r16_teams, etc.)
         const teamLists = ['r32_teams', 'r16_teams', 'r8_teams', 'r4_teams', 'r3_4_teams', 'final_teams'];
         teamLists.forEach(listKey => {
+            if (typeof isStageActive === 'function' && !isStageActive(listKey)) return;
             if (parsedCache[listKey] && Array.isArray(parsedCache[listKey])) {
                 parsedCache[listKey].forEach(team => {
                     if (results[listKey] && !results[listKey].includes(team)) {
@@ -112,6 +114,39 @@ async function initApp() {
         if (draft) {
             try {
                 officialResults = JSON.parse(draft);
+                
+                // Migrate old K.O. keys if present in the draft
+                if (officialResults.r8_matches && officialResults.r8_matches["W89-W93"]) {
+                    console.log("Migrating results draft with old K.O. keys to new official structure...");
+                    
+                    const r8Mapping = {
+                        "W89-W93": "W89-W90",
+                        "W90-W94": "W93-W94",
+                        "W91-W95": "W91-W92",
+                        "W92-W96": "W95-W96"
+                    };
+                    const newR8Matches = {};
+                    Object.entries(officialResults.r8_matches).forEach(([oldKey, matchObj]) => {
+                        const newKey = r8Mapping[oldKey] || oldKey;
+                        newR8Matches[newKey] = matchObj;
+                    });
+                    officialResults.r8_matches = newR8Matches;
+
+                    const r4Mapping = {
+                        "W97-W99": "W97-W98",
+                        "W98-W100": "W99-W100"
+                    };
+                    const newR4Matches = {};
+                    Object.entries(officialResults.r4_matches).forEach(([oldKey, matchObj]) => {
+                        const newKey = r4Mapping[oldKey] || oldKey;
+                        newR4Matches[newKey] = matchObj;
+                    });
+                    officialResults.r4_matches = newR4Matches;
+                    
+                    // Save the migrated draft back to localStorage
+                    localStorage.setItem('porra_results_draft', JSON.stringify(officialResults));
+                }
+                
                 console.log("Loaded official results from localStorage draft");
             } catch (e) {
                 console.error("Error parsing localStorage draft", e);
@@ -191,6 +226,80 @@ function updateAppUI() {
 
     // 7. Render Group Standings Tables
     renderGroupTables();
+}
+
+// Completion check helpers for tournament stages
+function isGroupStageCompleted() {
+    if (!porraData || !porraData.matches || !officialResults || !officialResults.matches) return false;
+    const groupMatches = porraData.matches.filter(m => m.jor === 'J1' || m.jor === 'J2' || m.jor === 'J3');
+    if (groupMatches.length === 0) return false;
+    return groupMatches.every(m => {
+        const score = officialResults.matches[m.id];
+        return score && score.trim() !== "";
+    });
+}
+
+function isR32Completed() {
+    if (!isGroupStageCompleted()) return false;
+    if (!officialResults || !officialResults.r32_matches) return false;
+    const keys = Object.keys(officialResults.r32_matches);
+    if (keys.length < 16) return false;
+    return keys.every(key => {
+        const m = officialResults.r32_matches[key];
+        return m && m.score && m.score.trim() !== "";
+    });
+}
+
+function isR16Completed() {
+    if (!isR32Completed()) return false;
+    if (!officialResults || !officialResults.r16_matches) return false;
+    const keys = Object.keys(officialResults.r16_matches);
+    if (keys.length < 8) return false;
+    return keys.every(key => {
+        const m = officialResults.r16_matches[key];
+        return m && m.score && m.score.trim() !== "";
+    });
+}
+
+function isR8Completed() {
+    if (!isR16Completed()) return false;
+    if (!officialResults || !officialResults.r8_matches) return false;
+    const keys = Object.keys(officialResults.r8_matches);
+    if (keys.length < 4) return false;
+    return keys.every(key => {
+        const m = officialResults.r8_matches[key];
+        return m && m.score && m.score.trim() !== "";
+    });
+}
+
+function isR4Completed() {
+    if (!isR8Completed()) return false;
+    if (!officialResults || !officialResults.r4_matches) return false;
+    const keys = Object.keys(officialResults.r4_matches);
+    if (keys.length < 2) return false;
+    return keys.every(key => {
+        const m = officialResults.r4_matches[key];
+        return m && m.score && m.score.trim() !== "";
+    });
+}
+
+function isStageActive(stageName) {
+    if (stageName === 'r32_matches' || stageName === 'r32_teams') {
+        return isGroupStageCompleted();
+    }
+    if (stageName === 'r16_matches' || stageName === 'r16_teams') {
+        return isR32Completed();
+    }
+    if (stageName === 'r8_matches' || stageName === 'r8_teams') {
+        return isR16Completed();
+    }
+    if (stageName === 'r4_matches' || stageName === 'r4_teams') {
+        return isR8Completed();
+    }
+    if (stageName === 'r3_4_match' || stageName === 'final_match' || stageName === 'r3_4_teams' || stageName === 'final_teams') {
+        return isR4Completed();
+    }
+    return true; // Group stage matches are always active
 }
 
 // Fill Round of 32 matchups and qualified teams provisionally based on group standings
@@ -313,6 +422,247 @@ function fillProvisionalR32Matchups() {
             provR32Teams.push(t.name);
         });
         results.r32_teams = provR32Teams;
+    }
+
+    // Dynamic propagation of winners/losers for later K.O. stages
+    fillProvisionalKOMatchups();
+}
+
+// Dynamically propagate winners through K.O. stages based on match scores
+function fillProvisionalKOMatchups() {
+    const matchKeysByNumber = {
+        // R32
+        '73': '2A-2B',
+        '74': '1C-2F',
+        '75': '1E-3ABCDF',
+        '76': '1F-2C',
+        '77': '2E-2I',
+        '78': '1I-3CDFGH',
+        '79': '1A-3CEFHI',
+        '80': '1L-3EHIJK',
+        '81': '1G-3AEHIJ',
+        '82': '1D-3BEFIJ',
+        '83': '1H-2J',
+        '84': '2K-2L',
+        '85': '1B-3EFGIJ',
+        '86': '2D-2G',
+        '87': '1J-2H',
+        '88': '1K-3DEIJL',
+        // R16
+        '89': 'W74-W77',
+        '90': 'W73-W75',
+        '91': 'W76-W78',
+        '92': 'W79-W80',
+        '93': 'W83-W84',
+        '94': 'W81-W82',
+        '95': 'W86-W88',
+        '96': 'W85-W87',
+        // R8
+        '97': 'W89-W90',
+        '98': 'W93-W94',
+        '99': 'W91-W92',
+        '100': 'W95-W96',
+        // R4
+        '101': 'W97-W98',
+        '102': 'W99-W100'
+    };
+
+    const matchWinner = {};
+    const matchLoser = {};
+
+    const provR16Teams = [];
+    const provR8Teams = [];
+    const provR4Teams = [];
+    const provFinalTeams = [];
+    const provR34Teams = [];
+
+    // Helper to get winner/loser of a specific stage match
+    // Helper to get winner/loser of a specific stage match
+    function resolveWinnerAndLoser(matchObj) {
+        if (!matchObj || !matchObj.matchup || !matchObj.score) return null;
+        const teams = matchObj.matchup.split('-').map(t => t.trim());
+        if (teams.length !== 2) return null;
+
+        const scoreStr = matchObj.score.trim();
+        if (scoreStr === "") return null;
+
+        // Split main score (handles "1-1 (4-3)" or "2-2")
+        const mainPart = scoreStr.split(' ')[0];
+        const parts = mainPart.split('-');
+        if (parts.length === 2) {
+            const h = parseInt(parts[0]);
+            const a = parseInt(parts[1]);
+            if (!isNaN(h) && !isNaN(a)) {
+                if (h > a) return { winner: teams[0], loser: teams[1] };
+                if (h < a) return { winner: teams[1], loser: teams[0] };
+                
+                // Shootout tie-breaker
+                const matchPenalties = scoreStr.match(/\((\d+)-(\d+)\)/);
+                if (matchPenalties && matchPenalties.length === 3) {
+                    const penH = parseInt(matchPenalties[1]);
+                    const penA = parseInt(matchPenalties[2]);
+                    if (penH > penA) return { winner: teams[0], loser: teams[1] };
+                    if (penH < penA) return { winner: teams[1], loser: teams[0] };
+                }
+            }
+        }
+        return null;
+    }
+
+    // 1. Process R32
+    Object.entries(results.r32_matches || {}).forEach(([key, m]) => {
+        const num = Object.keys(matchKeysByNumber).find(n => matchKeysByNumber[n] === key && parseInt(n) >= 73 && parseInt(n) <= 88);
+        if (num) {
+            const res = resolveWinnerAndLoser(m);
+            if (res) {
+                matchWinner[`W${num}`] = res.winner;
+                matchLoser[`L${num}`] = res.loser;
+                provR16Teams.push(res.winner);
+            }
+        }
+    });
+
+    // Explicit predecessors for R16 matches because the keys W73-W75, etc. are named after official slots
+    // but the match numbers are mapped to different keys in the user's custom database.
+    const r16Predecessors = {
+        "W73-W75": ["W73", "W76"],
+        "W74-W77": ["W75", "W78"],
+        "W76-W78": ["W74", "W77"],
+        "W79-W80": ["W79", "W80"],
+        "W83-W84": ["W83", "W84"],
+        "W81-W82": ["W81", "W82"],
+        "W86-W88": ["W86", "W87"],
+        "W85-W87": ["W85", "W88"]
+    };
+
+    // 2. Populate R16
+    Object.keys(results.r16_matches || {}).forEach(key => {
+        if (officialResults.r16_matches[key] && officialResults.r16_matches[key].matchup && officialResults.r16_matches[key].matchup.trim() !== "") {
+            results.r16_matches[key].matchup = officialResults.r16_matches[key].matchup;
+            return;
+        }
+        const preds = r16Predecessors[key];
+        if (preds && preds.length === 2) {
+            const t1 = matchWinner[preds[0]] || "Por determinar";
+            const t2 = matchWinner[preds[1]] || "Por determinar";
+            results.r16_matches[key].matchup = `${t1}-${t2}`;
+        }
+    });
+
+    // 3. Process R16
+    Object.entries(results.r16_matches || {}).forEach(([key, m]) => {
+        const num = Object.keys(matchKeysByNumber).find(n => matchKeysByNumber[n] === key && parseInt(n) >= 89 && parseInt(n) <= 96);
+        if (num) {
+            const res = resolveWinnerAndLoser(m);
+            if (res) {
+                matchWinner[`W${num}`] = res.winner;
+                matchLoser[`L${num}`] = res.loser;
+                provR8Teams.push(res.winner);
+            }
+        }
+    });
+
+    // 4. Populate R8
+    Object.keys(results.r8_matches || {}).forEach(key => {
+        if (officialResults.r8_matches[key] && officialResults.r8_matches[key].matchup && officialResults.r8_matches[key].matchup.trim() !== "") {
+            results.r8_matches[key].matchup = officialResults.r8_matches[key].matchup;
+            return;
+        }
+        const parts = key.split('-');
+        if (parts.length === 2) {
+            const t1 = matchWinner[parts[0]] || "Por determinar";
+            const t2 = matchWinner[parts[1]] || "Por determinar";
+            results.r8_matches[key].matchup = `${t1}-${t2}`;
+        }
+    });
+
+    // 5. Process R8
+    Object.entries(results.r8_matches || {}).forEach(([key, m]) => {
+        const num = Object.keys(matchKeysByNumber).find(n => matchKeysByNumber[n] === key && parseInt(n) >= 97 && parseInt(n) <= 100);
+        if (num) {
+            const res = resolveWinnerAndLoser(m);
+            if (res) {
+                matchWinner[`W${num}`] = res.winner;
+                matchLoser[`L${num}`] = res.loser;
+                provR4Teams.push(res.winner);
+            }
+        }
+    });
+
+    // 6. Populate R4
+    Object.keys(results.r4_matches || {}).forEach(key => {
+        if (officialResults.r4_matches[key] && officialResults.r4_matches[key].matchup && officialResults.r4_matches[key].matchup.trim() !== "") {
+            results.r4_matches[key].matchup = officialResults.r4_matches[key].matchup;
+            return;
+        }
+        const parts = key.split('-');
+        if (parts.length === 2) {
+            const t1 = matchWinner[parts[0]] || "Por determinar";
+            const t2 = matchWinner[parts[1]] || "Por determinar";
+            results.r4_matches[key].matchup = `${t1}-${t2}`;
+        }
+    });
+
+    // 7. Process R4
+    Object.entries(results.r4_matches || {}).forEach(([key, m]) => {
+        const num = Object.keys(matchKeysByNumber).find(n => matchKeysByNumber[n] === key && parseInt(n) >= 101 && parseInt(n) <= 102);
+        if (num) {
+            const res = resolveWinnerAndLoser(m);
+            if (res) {
+                matchWinner[`W${num}`] = res.winner;
+                matchLoser[`L${num}`] = res.loser;
+                provFinalTeams.push(res.winner);
+                provR34Teams.push(res.loser);
+            }
+        }
+    });
+
+    // 8. Populate final_match and r3_4_match
+    if (!officialResults.final_match || !officialResults.final_match.matchup || officialResults.final_match.matchup.trim() === "") {
+        const t1 = matchWinner['W101'] || "Por determinar";
+        const t2 = matchWinner['W102'] || "Por determinar";
+        results.final_match.matchup = `${t1}-${t2}`;
+    } else {
+        results.final_match.matchup = officialResults.final_match.matchup;
+    }
+
+    if (!officialResults.r3_4_match || !officialResults.r3_4_match.matchup || officialResults.r3_4_match.matchup.trim() === "") {
+        const t1 = matchLoser['L101'] || "Por determinar";
+        const t2 = matchLoser['L102'] || "Por determinar";
+        results.r3_4_match.matchup = `${t1}-${t2}`;
+    } else {
+        results.r3_4_match.matchup = officialResults.r3_4_match.matchup;
+    }
+
+    // 9. Update team arrays in results dynamically if official list is empty
+    if (!officialResults.r16_teams || officialResults.r16_teams.length === 0) {
+        results.r16_teams = provR16Teams;
+    } else {
+        results.r16_teams = officialResults.r16_teams;
+    }
+
+    if (!officialResults.r8_teams || officialResults.r8_teams.length === 0) {
+        results.r8_teams = provR8Teams;
+    } else {
+        results.r8_teams = officialResults.r8_teams;
+    }
+
+    if (!officialResults.r4_teams || officialResults.r4_teams.length === 0) {
+        results.r4_teams = provR4Teams;
+    } else {
+        results.r4_teams = officialResults.r4_teams;
+    }
+
+    if (!officialResults.final_teams || officialResults.final_teams.length === 0) {
+        results.final_teams = provFinalTeams;
+    } else {
+        results.final_teams = officialResults.final_teams;
+    }
+
+    if (!officialResults.r3_4_teams || officialResults.r3_4_teams.length === 0) {
+        results.r3_4_teams = provR34Teams;
+    } else {
+        results.r3_4_teams = officialResults.r3_4_teams;
     }
 }
 
@@ -464,215 +814,239 @@ function calculateStandings() {
         const playerPreds = porraData.predictions[p];
 
         // -- Round of 32 Teams --
-        const r32_teams_pred = playerPreds.r32_teams || {};
-        const r32_actual = results.r32_teams || [];
-        const r32_official = officialResults.r32_teams || [];
-        Object.values(r32_teams_pred).forEach(team => {
-            if (r32_actual.includes(team)) {
-                const ruleVal = Number(porraData.rules.r32_qualified || 1.0);
-                if (r32_official.includes(team)) {
-                    rawKOPointsFixed += ruleVal;
+        if (isStageActive('r32_teams')) {
+            const r32_teams_pred = playerPreds.r32_teams || {};
+            const r32_actual = results.r32_teams || [];
+            const r32_official = officialResults.r32_teams || [];
+            Object.values(r32_teams_pred).forEach(team => {
+                if (r32_actual.includes(team)) {
+                    const ruleVal = Number(porraData.rules.r32_qualified || 1.0);
+                    if (r32_official.includes(team)) {
+                        rawKOPointsFixed += ruleVal;
+                    }
+                    rawKOPointsProvisional += ruleVal;
                 }
-                rawKOPointsProvisional += ruleVal;
-            }
-        });
+            });
+        }
 
         // -- Round of 32 Matches --
-        const r32_matches_pred = playerPreds.r32_matches || {};
-        const r32_actual_matches = results.r32_matches || {};
-        Object.entries(r32_matches_pred).forEach(([matchKey, predVal]) => {
-            if (predVal && predVal.includes('·')) {
-                const parts = predVal.split('·');
-                const predMatchup = parts[0];
-                const predScore = parts[1];
-                
-                const actual = r32_actual_matches[matchKey];
-                if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
-                    const outcome = calcOutcomePoints(actual.score, predScore);
-                    const isProv = provisionalMatches && provisionalMatches.has(matchKey);
-                    if (isProv) {
-                        rawKOPointsProvisional += outcome.points;
-                    } else {
-                        rawKOPointsFixed += outcome.points;
-                        rawKOPointsProvisional += outcome.points;
+        if (isStageActive('r32_matches')) {
+            const r32_matches_pred = playerPreds.r32_matches || {};
+            const r32_actual_matches = results.r32_matches || {};
+            Object.entries(r32_matches_pred).forEach(([matchKey, predVal]) => {
+                if (predVal && predVal.includes('·')) {
+                    const parts = predVal.split('·');
+                    const predMatchup = parts[0];
+                    const predScore = parts[1];
+                    
+                    const actual = r32_actual_matches[matchKey];
+                    if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                        const outcome = calcOutcomePoints(actual.score, predScore);
+                        const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                        if (isProv) {
+                            rawKOPointsProvisional += outcome.points;
+                        } else {
+                            rawKOPointsFixed += outcome.points;
+                            rawKOPointsProvisional += outcome.points;
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
 
         // -- Round of 16 Teams --
-        const r16_teams_pred = playerPreds.r16_teams || {};
-        const r16_actual = results.r16_teams || [];
-        const r16_official = officialResults.r16_teams || [];
-        Object.values(r16_teams_pred).forEach(team => {
-            if (r16_actual.includes(team)) {
-                const ruleVal = Number(porraData.rules.r16_qualified || 1.0);
-                if (r16_official.includes(team)) {
-                    rawKOPointsFixed += ruleVal;
+        if (isStageActive('r16_teams')) {
+            const r16_teams_pred = playerPreds.r16_teams || {};
+            const r16_actual = results.r16_teams || [];
+            const r16_official = officialResults.r16_teams || [];
+            Object.values(r16_teams_pred).forEach(team => {
+                if (r16_actual.includes(team)) {
+                    const ruleVal = Number(porraData.rules.r16_qualified || 1.0);
+                    if (r16_official.includes(team)) {
+                        rawKOPointsFixed += ruleVal;
+                    }
+                    rawKOPointsProvisional += ruleVal;
                 }
-                rawKOPointsProvisional += ruleVal;
-            }
-        });
+            });
+        }
 
         // -- Round of 16 Matches --
-        const r16_matches_pred = playerPreds.r16_matches || {};
-        const r16_actual_matches = results.r16_actual_matches || results.r16_matches || {};
-        Object.entries(r16_matches_pred).forEach(([matchKey, predVal]) => {
-            if (predVal && predVal.includes('·')) {
-                const parts = predVal.split('·');
-                const predMatchup = parts[0];
-                const predScore = parts[1];
-                
-                const actual = r16_actual_matches[matchKey];
-                if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
-                    const outcome = calcOutcomePoints(actual.score, predScore);
-                    const isProv = provisionalMatches && provisionalMatches.has(matchKey);
-                    if (isProv) {
-                        rawKOPointsProvisional += outcome.points;
-                    } else {
-                        rawKOPointsFixed += outcome.points;
-                        rawKOPointsProvisional += outcome.points;
+        if (isStageActive('r16_matches')) {
+            const r16_matches_pred = playerPreds.r16_matches || {};
+            const r16_actual_matches = results.r16_actual_matches || results.r16_matches || {};
+            Object.entries(r16_matches_pred).forEach(([matchKey, predVal]) => {
+                if (predVal && predVal.includes('·')) {
+                    const parts = predVal.split('·');
+                    const predMatchup = parts[0];
+                    const predScore = parts[1];
+                    
+                    const actual = r16_actual_matches[matchKey];
+                    if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                        const outcome = calcOutcomePoints(actual.score, predScore);
+                        const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                        if (isProv) {
+                            rawKOPointsProvisional += outcome.points;
+                        } else {
+                            rawKOPointsFixed += outcome.points;
+                            rawKOPointsProvisional += outcome.points;
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
 
         // -- Quarterfinals Teams --
-        const r8_teams_pred = playerPreds.r8_teams || {};
-        const r8_actual = results.r8_teams || [];
-        const r8_official = officialResults.r8_teams || [];
-        Object.values(r8_teams_pred).forEach(team => {
-            if (r8_actual.includes(team)) {
-                const ruleVal = Number(porraData.rules.r8_qualified || 1.0);
-                if (r8_official.includes(team)) {
-                    rawKOPointsFixed += ruleVal;
+        if (isStageActive('r8_teams')) {
+            const r8_teams_pred = playerPreds.r8_teams || {};
+            const r8_actual = results.r8_teams || [];
+            const r8_official = officialResults.r8_teams || [];
+            Object.values(r8_teams_pred).forEach(team => {
+                if (r8_actual.includes(team)) {
+                    const ruleVal = Number(porraData.rules.r8_qualified || 1.0);
+                    if (r8_official.includes(team)) {
+                        rawKOPointsFixed += ruleVal;
+                    }
+                    rawKOPointsProvisional += ruleVal;
                 }
-                rawKOPointsProvisional += ruleVal;
-            }
-        });
+            });
+        }
 
         // -- Quarterfinals Matches --
-        const r8_matches_pred = playerPreds.r8_matches || {};
-        const r8_actual_matches = results.r8_actual_matches || results.r8_matches || {};
-        Object.entries(r8_matches_pred).forEach(([matchKey, predVal]) => {
-            if (predVal && predVal.includes('·')) {
-                const parts = predVal.split('·');
-                const predMatchup = parts[0];
-                const predScore = parts[1];
-                
-                const actual = r8_actual_matches[matchKey];
-                if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
-                    const outcome = calcOutcomePoints(actual.score, predScore);
-                    const isProv = provisionalMatches && provisionalMatches.has(matchKey);
-                    if (isProv) {
-                        rawKOPointsProvisional += outcome.points;
-                    } else {
-                        rawKOPointsFixed += outcome.points;
-                        rawKOPointsProvisional += outcome.points;
+        if (isStageActive('r8_matches')) {
+            const r8_matches_pred = playerPreds.r8_matches || {};
+            const r8_actual_matches = results.r8_actual_matches || results.r8_matches || {};
+            Object.entries(r8_matches_pred).forEach(([matchKey, predVal]) => {
+                if (predVal && predVal.includes('·')) {
+                    const parts = predVal.split('·');
+                    const predMatchup = parts[0];
+                    const predScore = parts[1];
+                    
+                    const actual = r8_actual_matches[matchKey];
+                    if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                        const outcome = calcOutcomePoints(actual.score, predScore);
+                        const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                        if (isProv) {
+                            rawKOPointsProvisional += outcome.points;
+                        } else {
+                            rawKOPointsFixed += outcome.points;
+                            rawKOPointsProvisional += outcome.points;
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
 
         // -- Semifinals Teams --
-        const r4_teams_pred = playerPreds.r4_teams || {};
-        const r4_actual = results.r4_teams || [];
-        const r4_official = officialResults.r4_teams || [];
-        Object.values(r4_teams_pred).forEach(team => {
-            if (r4_actual.includes(team)) {
-                const ruleVal = Number(porraData.rules.r4_qualified || 1.0);
-                if (r4_official.includes(team)) {
-                    rawKOPointsFixed += ruleVal;
+        if (isStageActive('r4_teams')) {
+            const r4_teams_pred = playerPreds.r4_teams || {};
+            const r4_actual = results.r4_teams || [];
+            const r4_official = officialResults.r4_teams || [];
+            Object.values(r4_teams_pred).forEach(team => {
+                if (r4_actual.includes(team)) {
+                    const ruleVal = Number(porraData.rules.r4_qualified || 1.0);
+                    if (r4_official.includes(team)) {
+                        rawKOPointsFixed += ruleVal;
+                    }
+                    rawKOPointsProvisional += ruleVal;
                 }
-                rawKOPointsProvisional += ruleVal;
-            }
-        });
+            });
+        }
 
         // -- Semifinals Matches --
-        const r4_matches_pred = playerPreds.r4_matches || {};
-        const r4_actual_matches = results.r4_actual_matches || results.r4_matches || {};
-        Object.entries(r4_matches_pred).forEach(([matchKey, predVal]) => {
-            if (predVal && predVal.includes('·')) {
-                const parts = predVal.split('·');
+        if (isStageActive('r4_matches')) {
+            const r4_matches_pred = playerPreds.r4_matches || {};
+            const r4_actual_matches = results.r4_actual_matches || results.r4_matches || {};
+            Object.entries(r4_matches_pred).forEach(([matchKey, predVal]) => {
+                if (predVal && predVal.includes('·')) {
+                    const parts = predVal.split('·');
+                    const predMatchup = parts[0];
+                    const predScore = parts[1];
+                    
+                    const actual = r4_actual_matches[matchKey];
+                    if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                        const outcome = calcOutcomePoints(actual.score, predScore);
+                        const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                        if (isProv) {
+                            rawKOPointsProvisional += outcome.points;
+                        } else {
+                            rawKOPointsFixed += outcome.points;
+                            rawKOPointsProvisional += outcome.points;
+                        }
+                    }
+                }
+            });
+        }
+
+        // -- 3rd/4th Teams --
+        if (isStageActive('r3_4_teams')) {
+            const r3_4_teams_pred = playerPreds.r3_4_teams || {};
+            const r3_4_actual = results.r3_4_teams || [];
+            const r3_4_official = officialResults.r3_4_teams || [];
+            Object.values(r3_4_teams_pred).forEach(team => {
+                if (r3_4_actual.includes(team)) {
+                    const ruleVal = Number(porraData.rules.r3_4_qualified || 1.0);
+                    if (r3_4_official.includes(team)) {
+                        rawKOPointsFixed += ruleVal;
+                    }
+                    rawKOPointsProvisional += ruleVal;
+                }
+            });
+        }
+
+        // -- Finalists Teams --
+        if (isStageActive('final_teams')) {
+            const final_teams_pred = playerPreds.final_teams || {};
+            const final_actual = results.final_teams || [];
+            const final_official = officialResults.final_teams || [];
+            Object.values(final_teams_pred).forEach(team => {
+                if (final_actual.includes(team)) {
+                    const ruleVal = Number(porraData.rules.final_qualified || 2.0);
+                    if (final_official.includes(team)) {
+                        rawKOPointsFixed += ruleVal;
+                    }
+                    rawKOPointsProvisional += ruleVal;
+                }
+            });
+        }
+
+        // -- 3rd/4th Match --
+        if (isStageActive('r3_4_match')) {
+            const r3_4_match_pred = playerPreds.r3_4_match;
+            if (r3_4_match_pred && r3_4_match_pred.includes('·')) {
+                const parts = r3_4_match_pred.split('·');
                 const predMatchup = parts[0];
                 const predScore = parts[1];
-                
-                const actual = r4_actual_matches[matchKey];
+                const actual = results.r3_4_match;
                 if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                     const outcome = calcOutcomePoints(actual.score, predScore);
-                    const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                    const isProv = provisionalMatches && provisionalMatches.has("r3-4");
                     if (isProv) {
                         rawKOPointsProvisional += outcome.points;
                     } else {
                         rawKOPointsFixed += outcome.points;
                         rawKOPointsProvisional += outcome.points;
                     }
-                }
-            }
-        });
-
-        // -- 3rd/4th Teams --
-        const r3_4_teams_pred = playerPreds.r3_4_teams || {};
-        const r3_4_actual = results.r3_4_teams || [];
-        const r3_4_official = officialResults.r3_4_teams || [];
-        Object.values(r3_4_teams_pred).forEach(team => {
-            if (r3_4_actual.includes(team)) {
-                const ruleVal = Number(porraData.rules.r3_4_qualified || 1.0);
-                if (r3_4_official.includes(team)) {
-                    rawKOPointsFixed += ruleVal;
-                }
-                rawKOPointsProvisional += ruleVal;
-            }
-        });
-
-        // -- Finalists Teams --
-        const final_teams_pred = playerPreds.final_teams || {};
-        const final_actual = results.final_teams || [];
-        const final_official = officialResults.final_teams || [];
-        Object.values(final_teams_pred).forEach(team => {
-            if (final_actual.includes(team)) {
-                const ruleVal = Number(porraData.rules.final_qualified || 2.0);
-                if (final_official.includes(team)) {
-                    rawKOPointsFixed += ruleVal;
-                }
-                rawKOPointsProvisional += ruleVal;
-            }
-        });
-
-        // -- 3rd/4th Match --
-        const r3_4_match_pred = playerPreds.r3_4_match;
-        if (r3_4_match_pred && r3_4_match_pred.includes('·')) {
-            const parts = r3_4_match_pred.split('·');
-            const predMatchup = parts[0];
-            const predScore = parts[1];
-            const actual = results.r3_4_match;
-            if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
-                const outcome = calcOutcomePoints(actual.score, predScore);
-                const isProv = provisionalMatches && provisionalMatches.has("r3-4");
-                if (isProv) {
-                    rawKOPointsProvisional += outcome.points;
-                } else {
-                    rawKOPointsFixed += outcome.points;
-                    rawKOPointsProvisional += outcome.points;
                 }
             }
         }
 
         // -- Final Match --
-        const final_match_pred = playerPreds.final_match;
-        if (final_match_pred && final_match_pred.includes('·')) {
-            const parts = final_match_pred.split('·');
-            const predMatchup = parts[0];
-            const predScore = parts[1];
-            const actual = results.final_match;
-            if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
-                const outcome = calcOutcomePoints(actual.score, predScore);
-                const isProv = provisionalMatches && provisionalMatches.has("final");
-                if (isProv) {
-                    rawKOPointsProvisional += outcome.points;
-                } else {
-                    rawKOPointsFixed += outcome.points;
-                    rawKOPointsProvisional += outcome.points;
+        if (isStageActive('final_match')) {
+            const final_match_pred = playerPreds.final_match;
+            if (final_match_pred && final_match_pred.includes('·')) {
+                const parts = final_match_pred.split('·');
+                const predMatchup = parts[0];
+                const predScore = parts[1];
+                const actual = results.final_match;
+                if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
+                    const outcome = calcOutcomePoints(actual.score, predScore);
+                    const isProv = provisionalMatches && provisionalMatches.has("final");
+                    if (isProv) {
+                        rawKOPointsProvisional += outcome.points;
+                    } else {
+                        rawKOPointsFixed += outcome.points;
+                        rawKOPointsProvisional += outcome.points;
+                    }
                 }
             }
         }
@@ -885,8 +1259,6 @@ function renderStandings(standings) {
             rankVal = `3º`;
         }
 
-        const liveAsterisk = hasLiveMatch ? ` <span style="color:var(--color-danger); font-weight:bold; font-size:1.1rem; line-height:0;" title="Puntos provisionales (partido en directo)">*</span>` : '';
-
         // Helper to format category points: if provisional, show in green with asterisk
         const formatCell = (fixedVal, provVal) => {
             const diff = provVal - fixedVal;
@@ -899,11 +1271,11 @@ function renderStandings(standings) {
         tr.innerHTML = `
             <td class="text-center ${rankClass}">${rankVal}</td>
             <td class="player-row-name">${player.name}</td>
-            <td class="text-center bold-score">${player.fixed.total.toFixed(1)}${liveAsterisk}</td>
-            <td class="text-center hide-on-mobile col-group-stage">${formatCell(player.fixed.group_stage, player.provisional.group_stage)}</td>
-            <td class="text-center hide-on-mobile col-group-standings">${formatCell(player.fixed.group_standings, player.provisional.group_standings)}</td>
-            <td class="text-center hide-on-mobile col-ko-stages">${formatCell(player.fixed.ko_stages, player.provisional.ko_stages)}</td>
-            <td class="text-center hide-on-mobile col-honor-list">${formatCell(player.fixed.honor_list, player.provisional.honor_list)}</td>
+            <td class="text-center bold-score" title="Puntos oficiales consolidados de ${player.name} (no incluye provisionales)">${player.fixed.total.toFixed(1)}</td>
+            <td class="text-center hide-on-mobile col-group-stage" title="Puntos Fase de Grupos de ${player.name}: ${player.fixed.group_stage.toFixed(1)} oficiales (provisionales: ${player.provisional.group_stage.toFixed(1)})">${formatCell(player.fixed.group_stage, player.provisional.group_stage)}</td>
+            <td class="text-center hide-on-mobile col-group-standings" title="Puntos Posiciones de Grupos de ${player.name}: ${player.fixed.group_standings.toFixed(1)} oficiales (provisionales: ${player.provisional.group_standings.toFixed(1)})">${formatCell(player.fixed.group_standings, player.provisional.group_standings)}</td>
+            <td class="text-center hide-on-mobile col-ko-stages" title="Puntos Fase K.O. de ${player.name}: ${player.fixed.ko_stages.toFixed(1)} oficiales (provisionales: ${player.provisional.ko_stages.toFixed(1)})">${formatCell(player.fixed.ko_stages, player.provisional.ko_stages)}</td>
+            <td class="text-center hide-on-mobile col-honor-list" title="Puntos Cuadro de Honor de ${player.name}: ${player.fixed.honor_list.toFixed(1)} oficiales (provisionales: ${player.provisional.honor_list.toFixed(1)})">${formatCell(player.fixed.honor_list, player.provisional.honor_list)}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -1087,9 +1459,19 @@ function renderMatches() {
                 }
             }
             
+            let tooltip = '';
+            if (isPlayed) {
+                if (badgeClass === 'badge-exact') tooltip = 'Resultado exacto (+2.0 puntos netos)';
+                else if (badgeClass === 'badge-diff') tooltip = 'Diferencia de goles (+1.0 punto neto)';
+                else if (badgeClass === 'badge-sign') tooltip = 'Signo 1X2 (+0.5 puntos netos)';
+                else tooltip = 'Fallo (0.0 puntos)';
+            } else {
+                tooltip = 'Partido pendiente de jugar oficialmente';
+            }
+            
             const badgeHtml = isPlayed ? 
-                `<span class="prediction-badge ${badgeClass}">${badgeText}</span>` : 
-                `<span class="prediction-badge badge-miss" style="background:rgba(255,255,255,0.03); color:var(--text-muted); border:1px solid rgba(255,255,255,0.08);">Pendiente</span>`;
+                `<span class="prediction-badge ${badgeClass}" title="${tooltip}">${badgeText}</span>` : 
+                `<span class="prediction-badge badge-miss" title="${tooltip}" style="background:rgba(255,255,255,0.03); color:var(--text-muted); border:1px solid rgba(255,255,255,0.08);">Pendiente</span>`;
             
             const ptsColor = (badgeClass === 'badge-exact' || badgeClass === 'badge-diff' || badgeClass === 'badge-sign') ? 'var(--color-success)' : 'var(--text-muted)';
             const pointsDisplay = isPlayed ? `<span class="pred-player-pts" style="color: ${ptsColor};">${pointsText}</span>` : `<span class="pred-player-pts"></span>`;
@@ -1121,191 +1503,480 @@ function renderMatches() {
     });
 }
 
-// Render K.O. rounds matchups and scores
+// Render K.O. rounds matchups and scores in a horizontal bracket tree layout
 function renderKORounds() {
-    const grid = document.getElementById('ko-matches-grid');
-    if (!grid) return;
+    const container = document.getElementById('ko-bracket-container');
+    if (!container) return;
 
-    grid.innerHTML = '';
+    container.innerHTML = '';
 
     const rounds = [
         {
             key: 'r32',
             name: 'Dieciseisavos de Final',
             desc: '32 Equipos - Eliminatoria a partido único ⚔️',
-            matches: (results && results.r32_matches) || {},
-            prefix: 'r32_matches'
+            prefix: 'r32_matches',
+            orderedKeys: [
+                '1E-3ABCDF', '1I-3CDFGH',
+                '2A-2B', '1F-2C',
+                '2K-2L', '1H-2J',
+                '1D-3BEFIJ', '1G-3AEHIJ',
+                '1C-2F', '2E-2I',
+                '1A-3CEFHI', '1L-3EHIJK',
+                '1J-2H', '2D-2G',
+                '1B-3EFGIJ', '1K-3DEIJL'
+            ]
         },
         {
             key: 'r16',
             name: 'Octavos de Final',
             desc: '16 Equipos - Camino a la gloria 🏆',
-            matches: (results && results.r16_matches) || {},
-            prefix: 'r16_matches'
+            prefix: 'r16_matches',
+            orderedKeys: [
+                'W74-W77', 'W73-W75',
+                'W83-W84', 'W81-W82',
+                'W76-W78', 'W79-W80',
+                'W86-W88', 'W85-W87'
+            ]
         },
         {
             key: 'r8',
             name: 'Cuartos de Final',
             desc: '8 Equipos - La tensión aumenta 🔥',
-            matches: (results && results.r8_matches) || {},
-            prefix: 'r8_matches'
+            prefix: 'r8_matches',
+            orderedKeys: [
+                'W89-W90', 'W93-W94',
+                'W91-W92', 'W95-W96'
+            ]
         },
         {
             key: 'r4',
             name: 'Semifinales',
             desc: '4 Equipos - A un paso de la Final 🌟',
-            matches: (results && results.r4_matches) || {},
-            prefix: 'r4_matches'
+            prefix: 'r4_matches',
+            orderedKeys: [
+                'W97-W98', 'W99-W100'
+            ]
         },
         {
             key: 'finales',
             name: 'Finales y Tercer Puesto',
             desc: 'Los encuentros definitivos por la copa 🏆',
-            matches: {
-                'r3_4_match': (results && results.r3_4_match) || { matchup: '', score: '' },
-                'final_match': (results && results.final_match) || { matchup: '', score: '' }
-            },
-            prefix: 'single'
+            prefix: 'single',
+            orderedKeys: [
+                'final_match',
+                'r3_4_match'
+            ]
         }
     ];
 
-    const filteredRounds = rounds.filter(r => {
-        if (currentKOFilter === 'all') return true;
-        return r.key === currentKOFilter;
-    });
+    const koMatchDates = {
+        '2A-2B': '28 Jun 13:00 PM',
+        '1C-2F': '29 Jun 11:00 PM',
+        '1E-3ABCDF': '29 Jun 14:30 PM',
+        '1F-2C': '29 Jun 19:00 PM',
+        '2E-2I': '30 Jun 11:00 PM',
+        '1I-3CDFGH': '30 Jun 15:00 PM',
+        '1A-3CEFHI': '30 Jun 19:00 PM',
+        '1L-3EHIJK': '01 Jul 10:00 AM',
+        '1G-3AEHIJ': '01 Jul 14:00 PM',
+        '1D-3BEFIJ': '01 Jul 18:00 PM',
+        '1H-2J': '02 Jul 13:00 PM',
+        '2K-2L': '02 Jul 17:00 PM',
+        '1B-3EFGIJ': '02 Jul 21:00 PM',
+        '2D-2G': '03 Jul 12:00 PM',
+        '1J-2H': '03 Jul 16:00 PM',
+        '1K-3DEIJL': '03 Jul 19:30 PM',
+        'W73-W75': '04 Jul 21:00',
+        'W74-W77': '04 Jul 23:59',
+        'W76-W78': '05 Jul 18:00',
+        'W79-W80': '05 Jul 21:00',
+        'W83-W84': '06 Jul 18:00',
+        'W81-W82': '06 Jul 21:00',
+        'W86-W88': '07 Jul 18:00',
+        'W85-W87': '07 Jul 21:00',
+        'W89-W90': '09 Jul 21:00',
+        'W91-W92': '10 Jul 18:00',
+        'W93-W94': '10 Jul 21:00',
+        'W95-W96': '11 Jul 21:00',
+        'W97-W98': '14 Jul 21:00',
+        'W99-W100': '15 Jul 21:00',
+        'r3_4_match': '18 Jul 21:00',
+        'final_match': '19 Jul 21:00'
+    };
 
-    filteredRounds.forEach(r => {
-        const matchesCount = Object.keys(r.matches).length;
-        if (matchesCount === 0) return;
+    const fifaCodes = {
+        'México': 'MEX',
+        'Sudáfrica': 'RSA',
+        'Corea del Sur': 'KOR',
+        'República Checa': 'CZE',
+        'Canadá': 'CAN',
+        'Bosnia y Herzegovina': 'BIH',
+        'Catar': 'QAT',
+        'Suiza': 'SUI',
+        'Brasil': 'BRA',
+        'Marruecos': 'MAR',
+        'Haití': 'HAI',
+        'Escocia': 'SCO',
+        'Estados Unidos': 'USA',
+        'Paraguay': 'PAR',
+        'Australia': 'AUS',
+        'Turquía': 'TUR',
+        'Alemania': 'GER',
+        'Curazao': 'CUW',
+        'Costa de Marfil': 'CIV',
+        'Ecuador': 'ECU',
+        'Países Bajos': 'NED',
+        'Japón': 'JPN',
+        'Suecia': 'SWE',
+        'Túnez': 'TUN',
+        'Bélgica': 'BEL',
+        'Egipto': 'EGY',
+        'Irán': 'IRN',
+        'Nueva Zelanda': 'NZL',
+        'España': 'ESP',
+        'Cabo Verde': 'CPV',
+        'Arabia Saudita': 'KSA',
+        'Uruguay': 'URU',
+        'Francia': 'FRA',
+        'Senegal': 'SEN',
+        'Irak': 'IRQ',
+        'Noruega': 'NOR',
+        'Argentina': 'ARG',
+        'Argelia': 'ALG',
+        'Austria': 'AUT',
+        'Jordania': 'JOR',
+        'Portugal': 'POR',
+        'RD Congo': 'COD',
+        'Uzbekistán': 'UZB',
+        'Colombia': 'COL',
+        'Inglaterra': 'ENG',
+        'Croacia': 'CRO',
+        'Ghana': 'GHA',
+        'Panamá': 'PAN'
+    };
 
-        // Round divider
-        const divider = document.createElement('div');
-        divider.classList.add('round-divider-card');
-        divider.innerHTML = `
-            <h3><i class="fa-solid fa-sitemap"></i> ${r.name}</h3>
-            <span class="round-info">${r.desc}</span>
-        `;
-        grid.appendChild(divider);
+    function getFifaCode(countryName) {
+        if (!countryName || countryName.trim() === "" || countryName === "Por determinar") return "TBD";
+        const clean = countryName.trim();
+        if (fifaCodes[clean]) return fifaCodes[clean];
+        if (clean.length <= 6) return clean;
+        return clean.substring(0, 3).toUpperCase();
+    }
 
-        Object.entries(r.matches).forEach(([matchKey, matchObj]) => {
-            const matchup = matchObj.matchup || '';
-            const score = matchObj.score || '';
-            const isPlayed = score.trim() !== "";
+    const matchKeysByNumber = {
+        // R32
+        '73': '2A-2B',
+        '74': '1C-2F',
+        '75': '1E-3ABCDF',
+        '76': '1F-2C',
+        '77': '2E-2I',
+        '78': '1I-3CDFGH',
+        '79': '1A-3CEFHI',
+        '80': '1L-3EHIJK',
+        '81': '1G-3AEHIJ',
+        '82': '1D-3BEFIJ',
+        '83': '1H-2J',
+        '84': '2K-2L',
+        '85': '1B-3EFGIJ',
+        '86': '2D-2G',
+        '87': '1J-2H',
+        '88': '1K-3DEIJL',
+        // R16
+        '89': 'W74-W77',
+        '90': 'W73-W75',
+        '91': 'W76-W78',
+        '92': 'W79-W80',
+        '93': 'W83-W84',
+        '94': 'W81-W82',
+        '95': 'W86-W88',
+        '96': 'W85-W87',
+        // R8
+        '97': 'W89-W90',
+        '98': 'W93-W94',
+        '99': 'W91-W92',
+        '100': 'W95-W96',
+        // R4
+        '101': 'W97-W98',
+        '102': 'W99-W100'
+    };
 
-            let t1 = "Por determinar";
-            let t2 = "Por determinar";
-            if (matchup.includes('-')) {
-                const parts = matchup.split('-');
-                t1 = parts[0].trim() || "Por determinar";
-                t2 = parts[1].trim() || "Por determinar";
-            } else if (matchup.trim() !== "") {
-                t1 = matchup.trim();
-            }
+    function parseR32SlotCode(slotCode) {
+        const match = slotCode.match(/^(\d)([A-L])$/);
+        if (match) {
+            const pos = match[1] === '1' ? '1º' : '2º';
+            const group = match[2];
+            return `${pos} del Grupo ${group}`;
+        }
+        if (slotCode.startsWith('3')) {
+            const groups = slotCode.substring(1).split('').join('/');
+            return `Mejor 3º de los Grupos ${groups}`;
+        }
+        return slotCode;
+    }
 
-            const lookupId = (r.prefix === 'single') ? `single:${matchKey}` : `${r.prefix}:${matchKey}`;
-            const isLive = provisionalMatches.has(String(lookupId));
-
-            const card = document.createElement('div');
-            card.classList.add('match-card');
-            card.style.cursor = 'default';
-            card.style.pointerEvents = 'none'; // Disables click event so K.O. cards do not try to expand
+    function parseWinnerSlotCode(slotCode) {
+        const match = slotCode.match(/^W(\d+)$/);
+        if (match) {
+            const num = match[1];
+            const key = matchKeysByNumber[num];
+            let roundName = "";
+            const numVal = parseInt(num);
+            if (numVal >= 73 && numVal <= 88) roundName = "Dieciseisavos";
+            else if (numVal >= 89 && numVal <= 96) roundName = "Octavos";
+            else if (numVal >= 97 && numVal <= 100) roundName = "Cuartos";
+            else if (numVal >= 101 && numVal <= 102) roundName = "Semifinal";
             
-            if (isLive) {
-                card.classList.add('live-match-highlight');
-            }
+            return `Ganador de ${roundName} (${key})`;
+        }
+        return slotCode;
+    }
 
-            let homeScore = '';
-            let awayScore = '';
-            if (isPlayed) {
-                const parts = score.split('-');
-                homeScore = parts[0] || '';
-                awayScore = parts[1] || '';
-            }
+    function parseLoserSlotCode(slotCode) {
+        const match = slotCode.match(/^L(\d+)$/);
+        if (match) {
+            const num = match[1];
+            const key = matchKeysByNumber[num];
+            return `Perdedor de Semifinal (${key})`;
+        }
+        return slotCode;
+    }
 
-            const flagHome = getFlagHtml(t1, true);
-            const flagAway = getFlagHtml(t2, true);
-
-            // Check if matchup is provisional (calculated dynamically from group standings)
-            let isProvisionalMatchup = false;
-            let officialMatchObj = null;
-            if (r.prefix === 'r32_matches') officialMatchObj = officialResults.r32_matches[matchKey];
-            else if (r.prefix === 'r16_matches') officialMatchObj = officialResults.r16_matches[matchKey];
-            else if (r.prefix === 'r8_matches') officialMatchObj = officialResults.r8_matches[matchKey];
-            else if (r.prefix === 'r4_matches') officialMatchObj = officialResults.r4_matches[matchKey];
-            else if (r.prefix === 'single') {
-                if (matchKey === 'r3_4_match') officialMatchObj = officialResults.r3_4_match;
-                else if (matchKey === 'final_match') officialMatchObj = officialResults.final_match;
+    function getTeamTooltip(roundKey, matchKey, teamIndex, teamName, isProvisional) {
+        if (teamName === "Por determinar") {
+            return "Por determinar";
+        }
+        
+        let originDesc = "";
+        if (roundKey === 'r32') {
+            const parts = matchKey.split('-');
+            if (parts.length === 2) {
+                const slotCode = parts[teamIndex];
+                originDesc = parseR32SlotCode(slotCode);
             }
-            if (matchup && (!officialMatchObj || !officialMatchObj.matchup || officialMatchObj.matchup.trim() === "")) {
+        } else if (roundKey === 'r16' || roundKey === 'r8' || roundKey === 'r4') {
+            const parts = matchKey.split('-');
+            if (parts.length === 2) {
+                const slotCode = parts[teamIndex];
+                originDesc = parseWinnerSlotCode(slotCode);
+            }
+        } else if (roundKey === 'finales') {
+            if (matchKey === 'final_match') {
+                const slotCode = teamIndex === 0 ? 'W101' : 'W102';
+                originDesc = parseWinnerSlotCode(slotCode);
+            } else if (matchKey === 'r3_4_match') {
+                const slotCode = teamIndex === 0 ? 'L101' : 'L102';
+                originDesc = parseLoserSlotCode(slotCode);
+            }
+        }
+        
+        if (isProvisional) {
+            return `${teamName} (Provisional, ${originDesc})`;
+        } else {
+            return `${teamName} (${originDesc})`;
+        }
+    }
+
+
+
+    // Helper function to create a match card
+    function createMatchCard(r, matchKey) {
+        let matchObj = null;
+        if (r.prefix === 'single') {
+            matchObj = (results && results[matchKey]) || { matchup: '', score: '' };
+        } else {
+            matchObj = (results && results[r.prefix] && results[r.prefix][matchKey]) || { matchup: '', score: '' };
+        }
+
+        const matchup = matchObj.matchup || '';
+        const score = matchObj.score || '';
+        const isPlayed = score.trim() !== "";
+
+        let t1 = "Por determinar";
+        let t2 = "Por determinar";
+        if (matchup.includes('-')) {
+            const parts = matchup.split('-');
+            t1 = parts[0].trim() || "Por determinar";
+            t2 = parts[1].trim() || "Por determinar";
+        } else if (matchup.trim() !== "") {
+            t1 = matchup.trim();
+        }
+
+        const lookupId = (r.prefix === 'single') ? `single:${matchKey}` : `${r.prefix}:${matchKey}`;
+        const isLive = provisionalMatches.has(String(lookupId));
+
+        const card = document.createElement('div');
+        card.classList.add('ko-bracket-match');
+        card.style.cursor = 'default';
+        
+        if (isLive) {
+            card.classList.add('live-match-highlight');
+        }
+
+        let homeScore = '';
+        let awayScore = '';
+        if (isPlayed) {
+            const parts = score.split('-');
+            homeScore = parts[0] || '';
+            awayScore = parts[1] || '';
+        }
+
+        // Use small flags (isLarge = false)
+        const flagHome = getFlagHtml(t1, false);
+        const flagAway = getFlagHtml(t2, false);
+
+        const fifaHome = getFifaCode(t1);
+        const fifaAway = getFifaCode(t2);
+
+        // Check if matchup is provisional (calculated dynamically from group standings or previous active stages)
+        let isProvisionalMatchup = false;
+        let officialMatchObj = null;
+        if (r.prefix === 'r32_matches') officialMatchObj = officialResults.r32_matches[matchKey];
+        else if (r.prefix === 'r16_matches') officialMatchObj = officialResults.r16_matches[matchKey];
+        else if (r.prefix === 'r8_matches') officialMatchObj = officialResults.r8_matches[matchKey];
+        else if (r.prefix === 'r4_matches') officialMatchObj = officialResults.r4_matches[matchKey];
+        else if (r.prefix === 'single') {
+            if (matchKey === 'r3_4_match') officialMatchObj = officialResults.r3_4_match;
+            else if (matchKey === 'final_match') officialMatchObj = officialResults.final_match;
+        }
+
+        if (matchup) {
+            if (!officialMatchObj || !officialMatchObj.matchup || officialMatchObj.matchup.trim() === "" || officialMatchObj.matchup.match(/\d/)) {
                 isProvisionalMatchup = true;
             }
+        }
+        if (r.prefix === 'r32_matches' && !isGroupStageCompleted()) {
+            isProvisionalMatchup = true;
+        } else if (r.prefix === 'r16_matches' && !isR32Completed()) {
+            isProvisionalMatchup = true;
+        } else if (r.prefix === 'r8_matches' && !isR16Completed()) {
+            isProvisionalMatchup = true;
+        } else if (r.prefix === 'r4_matches' && !isR8Completed()) {
+            isProvisionalMatchup = true;
+        } else if (r.prefix === 'single' && !isR4Completed()) {
+            isProvisionalMatchup = true;
+        }
 
-            const provAsterisk = isProvisionalMatchup ? ' <span style="color:var(--color-success); font-weight:bold; font-size:1.1rem; line-height:0;" title="Cruce provisional (Fase de grupos activa)">*</span>' : '';
+        const provAsterisk = isProvisionalMatchup ? ' <span style="color:var(--color-success); font-weight:bold; font-size:0.9rem; line-height:0;" title="Cruce provisional (Fase de grupos o ronda previa activa)">*</span>' : '';
 
-            let slotLabel = "";
-            if (r.key === 'r32') {
-                slotLabel = `Cruce ${matchKey}`;
-            } else if (r.key === 'r16') {
-                slotLabel = `Octavos (${matchKey})`;
-            } else if (r.key === 'r8') {
-                slotLabel = `Cuartos (${matchKey})`;
-            } else if (r.key === 'r4') {
-                slotLabel = `Semifinal (${matchKey})`;
-            } else if (matchKey === 'r3_4_match') {
-                slotLabel = `Tercer y Cuarto Puesto`;
-            } else if (matchKey === 'final_match') {
-                slotLabel = `Gran Final`;
-            }
+        let slotLabel = "";
+        let slotTitle = "";
+        if (r.key === 'r32') {
+            slotLabel = matchKey;
+            slotTitle = `Dieciseisavos: Cruce ${matchKey}`;
+        } else if (r.key === 'r16') {
+            slotLabel = matchKey;
+            slotTitle = `Octavos: ${matchKey}`;
+        } else if (r.key === 'r8') {
+            slotLabel = matchKey;
+            slotTitle = `Cuartos: ${matchKey}`;
+        } else if (r.key === 'r4') {
+            slotLabel = matchKey;
+            slotTitle = `Semifinal: ${matchKey}`;
+        } else if (matchKey === 'r3_4_match') {
+            slotLabel = `3º Puesto`;
+            slotTitle = `Tercer y Cuarto Puesto`;
+        } else if (matchKey === 'final_match') {
+            slotLabel = `Final`;
+            slotTitle = `Gran Final`;
+        }
 
-            const cardHeader = `
-                <div class="match-header">
-                    <span style="font-weight: 600; color: var(--color-primary-hover);">${slotLabel}${provAsterisk}</span>
-                    <span>${r.name}</span>
-                </div>
-            `;
+        const provHomeAsterisk = isProvisionalMatchup && t1 !== 'Por determinar' ? ' <span style="color:var(--color-success); font-weight:700;" title="Equipo provisional">*</span>' : '';
+        const provAwayAsterisk = isProvisionalMatchup && t2 !== 'Por determinar' ? ' <span style="color:var(--color-success); font-weight:700;" title="Equipo provisional">*</span>' : '';
 
-            const scoreContent = `
-                <div class="score-display">
-                    <span class="score-number">${isPlayed ? homeScore : '-'}</span>
-                    <span class="score-hyphen">-</span>
-                    <span class="score-number">${isPlayed ? awayScore : '-'}</span>
-                </div>
-            `;
+        // Retrieve date and format header
+        const matchDateStr = koMatchDates[matchKey] || '';
 
-            const cardBody = `
-                <div class="match-body">
-                    <div class="team-display">
+        const tooltipHome = getTeamTooltip(r.key, matchKey, 0, t1, isProvisionalMatchup);
+        const tooltipAway = getTeamTooltip(r.key, matchKey, 1, t2, isProvisionalMatchup);
+
+        card.innerHTML = `
+            <div class="ko-match-card-header">
+                <span style="font-weight: 600; color: var(--color-primary-hover);" title="${slotTitle}">${slotLabel}${provAsterisk}</span>
+                <span title="Fecha de juego">${matchDateStr}</span>
+            </div>
+            <div class="ko-match-card-body">
+                <div class="ko-match-team-row">
+                    <div class="ko-match-team-info" title="${tooltipHome}">
                         ${flagHome}
-                        <span class="team-name" title="${t1}">${t1}</span>
+                        <span class="team-name">${fifaHome}${provHomeAsterisk}</span>
                     </div>
-                    ${scoreContent}
-                    <div class="team-display">
+                    <div class="ko-match-team-score">${isPlayed ? homeScore : '-'}</div>
+                </div>
+                <div class="ko-match-team-row">
+                    <div class="ko-match-team-info" title="${tooltipAway}">
                         ${flagAway}
-                        <span class="team-name" title="${t2}">${t2}</span>
+                        <span class="team-name">${fifaAway}${provAwayAsterisk}</span>
                     </div>
+                    <div class="ko-match-team-score">${isPlayed ? awayScore : '-'}</div>
                 </div>
-            `;
+            </div>
+        `;
+        return card;
+    }
 
-            let statusLabel = '';
-            if (isPlayed) {
-                if (isLive) {
-                    statusLabel = `<span class="provisional-match-label"><i class="fa-solid fa-arrows-rotate"></i> Provisional (API)</span>`;
-                } else {
-                    statusLabel = `<span class="played-match-label"><i class="fa-solid fa-circle-check"></i> Finalizado</span>`;
+    rounds.forEach(r => {
+        const col = document.createElement('div');
+        col.classList.add('ko-bracket-column');
+        col.setAttribute('data-round', r.key);
+
+        const colHeader = document.createElement('div');
+        colHeader.classList.add('ko-column-header');
+        colHeader.innerHTML = `
+            <h3>${r.name}</h3>
+            <span>${r.desc}</span>
+        `;
+        col.appendChild(colHeader);
+
+        const colMatches = document.createElement('div');
+        colMatches.classList.add('ko-column-matches');
+
+        if (r.key === 'finales') {
+            // Special layout for Final and 3rd place
+            colMatches.style.justifyContent = 'center';
+
+            // Gran Final
+            const finalPair = document.createElement('div');
+            finalPair.classList.add('ko-match-pair');
+            const finalCard = createMatchCard(r, 'final_match');
+            finalPair.appendChild(finalCard);
+            colMatches.appendChild(finalPair);
+
+            // Tercer Puesto (placed absolutely at the bottom)
+            const thirdPlaceWrapper = document.createElement('div');
+            thirdPlaceWrapper.classList.add('ko-3rd-place');
+            thirdPlaceWrapper.style.position = 'absolute';
+            thirdPlaceWrapper.style.bottom = '1.5rem';
+            thirdPlaceWrapper.style.left = '0';
+            thirdPlaceWrapper.style.right = '0';
+
+            const thirdCard = createMatchCard(r, 'r3_4_match');
+            thirdCard.classList.add('no-connectors');
+            thirdPlaceWrapper.appendChild(thirdCard);
+            colMatches.appendChild(thirdPlaceWrapper);
+        } else {
+            // Standard layout grouped in pairs of 2
+            for (let i = 0; i < r.orderedKeys.length; i += 2) {
+                const key1 = r.orderedKeys[i];
+                const key2 = r.orderedKeys[i + 1];
+
+                const pairDiv = document.createElement('div');
+                pairDiv.classList.add('ko-match-pair');
+
+                const card1 = createMatchCard(r, key1);
+                pairDiv.appendChild(card1);
+
+                if (key2) {
+                    const card2 = createMatchCard(r, key2);
+                    pairDiv.appendChild(card2);
                 }
-            } else {
-                statusLabel = `<span class="pending-match-label"><i class="fa-solid fa-clock"></i> Pendiente</span>`;
+
+                colMatches.appendChild(pairDiv);
             }
+        }
 
-            const cardFooter = `
-                <div class="match-footer" style="margin-bottom:0.4rem;">
-                    ${statusLabel}
-                </div>
-            `;
-
-            card.innerHTML = cardHeader + cardBody + cardFooter;
-            grid.appendChild(card);
-        });
+        col.appendChild(colMatches);
+        container.appendChild(col);
     });
 }
 
@@ -1368,25 +2039,17 @@ function setupEventListeners() {
         });
     });
 
-    // Filters for matches
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    // Filters for matches (scoped to #partidos tab)
+    document.querySelectorAll('#partidos .filter-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#partidos .filter-btn').forEach(b => b.classList.remove('active'));
             e.currentTarget.classList.add('active');
             currentFilter = e.currentTarget.getAttribute('data-filter');
             renderMatches();
         });
     });
 
-    // Filters for K.O. matches
-    document.querySelectorAll('.ko-filter-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.ko-filter-btn').forEach(b => b.classList.remove('active'));
-            e.currentTarget.classList.add('active');
-            currentKOFilter = e.currentTarget.getAttribute('data-kofilter');
-            renderKORounds();
-        });
-    });
+
 
     // Modal Close
     document.getElementById('modal-close-btn').addEventListener('click', closePlayerModal);
@@ -1474,24 +2137,32 @@ function openPlayerModal(playerName) {
         
         let scoreBadge = '';
         if (item.actual === '-') {
-            scoreBadge = `<span class="prediction-badge badge-miss">Pendiente</span>`;
+            scoreBadge = `<span class="prediction-badge badge-miss" title="Partido pendiente de jugar oficialmente">Pendiente</span>`;
         } else {
             let badgeText = "Fallo (0)";
             let badgeClass = "badge-miss";
+            let tooltipText = "Fallo: predicción incorrecta (0.0 puntos)";
+            
             if (item.outcomeClass === 'exact') {
                 badgeText = "Exacto (2.0)";
                 badgeClass = "badge-exact";
+                tooltipText = "Resultado exacto: acertó marcador y signo (2.0 puntos netos)";
             } else if (item.outcomeClass === 'diff') {
                 badgeText = "Dif. Goles (1.0)";
                 badgeClass = "badge-diff";
+                tooltipText = "Diferencia de goles: acertó diferencia y signo (1.0 punto neto)";
             } else if (item.outcomeClass === 'sign') {
                 badgeText = "Signo 1X2 (0.5)";
                 badgeClass = "badge-sign";
+                tooltipText = "Signo 1X2: acertó ganador o empate (0.5 puntos netos)";
             }
+            
             if (item.isProvisional) {
                 badgeText += "*";
+                tooltipText += " (Provisional: partido en directo)";
             }
-            scoreBadge = `<span class="prediction-badge ${badgeClass}">${badgeText}</span>`;
+            
+            scoreBadge = `<span class="prediction-badge ${badgeClass}" title="${tooltipText}">${badgeText}</span>`;
         }
 
         const flagHome = getFlagHtml(item.casa, false);
@@ -1752,7 +2423,18 @@ function evaluateKOBracketMatch(card, stageLabel, matchKey, predVal, actualMatch
     else if (actualMatchesList === results.r8_matches) officialMatchObj = officialResults.r8_matches[matchKey];
     else if (actualMatchesList === results.r4_matches) officialMatchObj = officialResults.r4_matches[matchKey];
     
-    if (actualMatchup && (!officialMatchObj || !officialMatchObj.matchup || officialMatchObj.matchup.trim() === "")) {
+    if (actualMatchup) {
+        if (!officialMatchObj || !officialMatchObj.matchup || officialMatchObj.matchup.trim() === "" || officialMatchObj.matchup.match(/\d/)) {
+            isProvisionalMatchup = true;
+        }
+    }
+    if (actualMatchesList === results.r32_matches && !isGroupStageCompleted()) {
+        isProvisionalMatchup = true;
+    } else if (actualMatchesList === results.r16_matches && !isR32Completed()) {
+        isProvisionalMatchup = true;
+    } else if (actualMatchesList === results.r8_matches && !isR16Completed()) {
+        isProvisionalMatchup = true;
+    } else if (actualMatchesList === results.r4_matches && !isR4Completed()) {
         isProvisionalMatchup = true;
     }
 
@@ -2213,6 +2895,7 @@ async function fetchAndProcessLiveResults() {
                 let koKey = "";
 
                 if (roundLower.includes('32') || roundLower.includes('last_32')) {
+                    if (!isStageActive('r32_matches')) return;
                     addQualified(results.r32_teams, home);
                     addQualified(results.r32_teams, away);
                     if (isPlayedOrLive) {
@@ -2222,6 +2905,7 @@ async function fetchAndProcessLiveResults() {
                         if (awayWon) addQualified(results.r16_teams, away);
                     }
                 } else if (roundLower.includes('16') || roundLower.includes('last_16')) {
+                    if (!isStageActive('r16_matches')) return;
                     addQualified(results.r16_teams, home);
                     addQualified(results.r16_teams, away);
                     if (isPlayedOrLive) {
@@ -2231,6 +2915,7 @@ async function fetchAndProcessLiveResults() {
                         if (awayWon) addQualified(results.r8_teams, away);
                     }
                 } else if (roundLower.includes('quarter')) {
+                    if (!isStageActive('r8_matches')) return;
                     addQualified(results.r8_teams, home);
                     addQualified(results.r8_teams, away);
                     if (isPlayedOrLive) {
@@ -2240,6 +2925,7 @@ async function fetchAndProcessLiveResults() {
                         if (awayWon) addQualified(results.r4_teams, away);
                     }
                 } else if (roundLower.includes('semi')) {
+                    if (!isStageActive('r4_matches')) return;
                     addQualified(results.r4_teams, home);
                     addQualified(results.r4_teams, away);
                     if (isPlayedOrLive) {
@@ -2255,6 +2941,7 @@ async function fetchAndProcessLiveResults() {
                         }
                     }
                 } else if (roundLower.includes('third') || roundLower.includes('bronze') || roundLower.includes('3')) {
+                    if (!isStageActive('r3_4_match')) return;
                     addQualified(results.r3_4_teams, home);
                     addQualified(results.r3_4_teams, away);
                     if (isPlayedOrLive) {
@@ -2281,6 +2968,7 @@ async function fetchAndProcessLiveResults() {
                         }
                     }
                 } else if (roundLower.includes('final')) {
+                    if (!isStageActive('final_match')) return;
                     addQualified(results.final_teams, home);
                     addQualified(results.final_teams, away);
                     if (isPlayedOrLive) {
