@@ -193,8 +193,134 @@ function updateAppUI() {
     renderGroupTables();
 }
 
+// Fill Round of 32 matchups and qualified teams provisionally based on group standings
+function fillProvisionalR32Matchups() {
+    if (!results || !results.r32_matches) return;
+    
+    // Calculate standings dynamically
+    const data = calculateGroupStandings();
+    const standingsByGroup = data.standingsByGroup;
+    const thirds = data.thirds;
+    
+    if (!standingsByGroup || !thirds) return;
+
+    // Slots for the 8 best thirds
+    const slotsInfo = [
+        { key: '1E-3ABCDF', allowed: ['A', 'B', 'C', 'D', 'F'] },
+        { key: '1I-3CDFGH', allowed: ['C', 'D', 'F', 'G', 'H'] },
+        { key: '1A-3CEFHI', allowed: ['C', 'E', 'F', 'H', 'I'] },
+        { key: '1L-3EHIJK', allowed: ['E', 'H', 'I', 'J', 'K'] },
+        { key: '1G-3AEHIJ', allowed: ['A', 'E', 'H', 'I', 'J'] },
+        { key: '1D-3BEFIJ', allowed: ['B', 'E', 'F', 'I', 'J'] },
+        { key: '1B-3EFGIJ', allowed: ['E', 'F', 'G', 'I', 'J'] },
+        { key: '1K-3DEIJL', allowed: ['D', 'E', 'I', 'J', 'L'] }
+    ];
+
+    const qualifiedThirds = thirds.slice(0, 8);
+    const thirdsAssignment = {};
+    const usedTeams = new Set();
+
+    function backtrack(slotIdx) {
+        if (slotIdx === slotsInfo.length) {
+            return true;
+        }
+        const slot = slotsInfo[slotIdx];
+        for (let i = 0; i < qualifiedThirds.length; i++) {
+            const team = qualifiedThirds[i];
+            if (!usedTeams.has(team.name) && slot.allowed.includes(team.group)) {
+                thirdsAssignment[slot.key] = team.name;
+                usedTeams.add(team.name);
+                if (backtrack(slotIdx + 1)) {
+                    return true;
+                }
+                usedTeams.delete(team.name);
+                delete thirdsAssignment[slot.key];
+            }
+        }
+        return false;
+    }
+
+    if (!backtrack(0)) {
+        // Fallback greedy
+        const assigned = new Set();
+        slotsInfo.forEach(slot => {
+            const match = qualifiedThirds.find(t => !assigned.has(t.name) && slot.allowed.includes(t.group));
+            if (match) {
+                thirdsAssignment[slot.key] = match.name;
+                assigned.add(match.name);
+            } else {
+                const anyUnassigned = qualifiedThirds.find(t => !assigned.has(t.name));
+                if (anyUnassigned) {
+                    thirdsAssignment[slot.key] = anyUnassigned.name;
+                    assigned.add(anyUnassigned.name);
+                }
+            }
+        });
+    }
+
+    // Help resolve placeholder: e.g. "1A" -> Winner of Group A
+    function resolveTeamPlaceholder(code, standingsByGroup) {
+        const match = code.match(/^(\d)([A-L])$/);
+        if (match) {
+            const pos = parseInt(match[1]); // 1 or 2
+            const group = match[2]; // 'A'..'L'
+            const teams = standingsByGroup[group];
+            if (teams && teams[pos - 1]) {
+                return teams[pos - 1].name;
+            }
+        }
+        return null;
+    }
+
+    // Now resolve each of the 16 matches in results.r32_matches
+    Object.keys(results.r32_matches).forEach(key => {
+        // Check if matchup is already officially set in officialResults.r32_matches
+        if (officialResults.r32_matches[key] && officialResults.r32_matches[key].matchup && officialResults.r32_matches[key].matchup.trim() !== "") {
+            // Keep official matchup
+            results.r32_matches[key].matchup = officialResults.r32_matches[key].matchup;
+            return;
+        }
+
+        // Otherwise resolve it provisionally
+        const parts = key.split('-');
+        if (parts.length === 2) {
+            let t1 = resolveTeamPlaceholder(parts[0], standingsByGroup);
+            let t2 = resolveTeamPlaceholder(parts[1], standingsByGroup);
+
+            // If it's a best thirds slot, look up the assignment
+            if (parts[1].startsWith('3')) {
+                t2 = thirdsAssignment[key];
+            }
+
+            if (t1 && t2) {
+                results.r32_matches[key].matchup = `${t1}-${t2}`;
+            } else {
+                results.r32_matches[key].matchup = "";
+            }
+        }
+    });
+
+    // Populate results.r32_teams provisionally if both official and current live results are empty
+    if ((!officialResults.r32_teams || officialResults.r32_teams.length === 0) &&
+        (!results.r32_teams || results.r32_teams.length === 0)) {
+        const provR32Teams = [];
+        Object.keys(standingsByGroup).forEach(group => {
+            const teams = standingsByGroup[group];
+            if (teams[0]) provR32Teams.push(teams[0].name);
+            if (teams[1]) provR32Teams.push(teams[1].name);
+        });
+        qualifiedThirds.forEach(t => {
+            provR32Teams.push(t.name);
+        });
+        results.r32_teams = provR32Teams;
+    }
+}
+
 /// Calculate the detailed points and ranking for all players
 function calculateStandings() {
+    // Fill provisional R32 matchups and qualified teams first
+    fillProvisionalR32Matchups();
+
     const playersPoints = {};
 
     // Initialize scores
@@ -340,10 +466,13 @@ function calculateStandings() {
         // -- Round of 32 Teams --
         const r32_teams_pred = playerPreds.r32_teams || {};
         const r32_actual = results.r32_teams || [];
+        const r32_official = officialResults.r32_teams || [];
         Object.values(r32_teams_pred).forEach(team => {
             if (r32_actual.includes(team)) {
                 const ruleVal = Number(porraData.rules.r32_qualified || 1.0);
-                rawKOPointsFixed += ruleVal;
+                if (r32_official.includes(team)) {
+                    rawKOPointsFixed += ruleVal;
+                }
                 rawKOPointsProvisional += ruleVal;
             }
         });
@@ -374,10 +503,13 @@ function calculateStandings() {
         // -- Round of 16 Teams --
         const r16_teams_pred = playerPreds.r16_teams || {};
         const r16_actual = results.r16_teams || [];
+        const r16_official = officialResults.r16_teams || [];
         Object.values(r16_teams_pred).forEach(team => {
             if (r16_actual.includes(team)) {
                 const ruleVal = Number(porraData.rules.r16_qualified || 1.0);
-                rawKOPointsFixed += ruleVal;
+                if (r16_official.includes(team)) {
+                    rawKOPointsFixed += ruleVal;
+                }
                 rawKOPointsProvisional += ruleVal;
             }
         });
@@ -408,10 +540,13 @@ function calculateStandings() {
         // -- Quarterfinals Teams --
         const r8_teams_pred = playerPreds.r8_teams || {};
         const r8_actual = results.r8_teams || [];
+        const r8_official = officialResults.r8_teams || [];
         Object.values(r8_teams_pred).forEach(team => {
             if (r8_actual.includes(team)) {
                 const ruleVal = Number(porraData.rules.r8_qualified || 1.0);
-                rawKOPointsFixed += ruleVal;
+                if (r8_official.includes(team)) {
+                    rawKOPointsFixed += ruleVal;
+                }
                 rawKOPointsProvisional += ruleVal;
             }
         });
@@ -442,10 +577,13 @@ function calculateStandings() {
         // -- Semifinals Teams --
         const r4_teams_pred = playerPreds.r4_teams || {};
         const r4_actual = results.r4_teams || [];
+        const r4_official = officialResults.r4_teams || [];
         Object.values(r4_teams_pred).forEach(team => {
             if (r4_actual.includes(team)) {
                 const ruleVal = Number(porraData.rules.r4_qualified || 1.0);
-                rawKOPointsFixed += ruleVal;
+                if (r4_official.includes(team)) {
+                    rawKOPointsFixed += ruleVal;
+                }
                 rawKOPointsProvisional += ruleVal;
             }
         });
@@ -476,10 +614,13 @@ function calculateStandings() {
         // -- 3rd/4th Teams --
         const r3_4_teams_pred = playerPreds.r3_4_teams || {};
         const r3_4_actual = results.r3_4_teams || [];
+        const r3_4_official = officialResults.r3_4_teams || [];
         Object.values(r3_4_teams_pred).forEach(team => {
             if (r3_4_actual.includes(team)) {
                 const ruleVal = Number(porraData.rules.r3_4_qualified || 1.0);
-                rawKOPointsFixed += ruleVal;
+                if (r3_4_official.includes(team)) {
+                    rawKOPointsFixed += ruleVal;
+                }
                 rawKOPointsProvisional += ruleVal;
             }
         });
@@ -487,10 +628,13 @@ function calculateStandings() {
         // -- Finalists Teams --
         const final_teams_pred = playerPreds.final_teams || {};
         const final_actual = results.final_teams || [];
+        const final_official = officialResults.final_teams || [];
         Object.values(final_teams_pred).forEach(team => {
             if (final_actual.includes(team)) {
                 const ruleVal = Number(porraData.rules.final_qualified || 2.0);
-                rawKOPointsFixed += ruleVal;
+                if (final_official.includes(team)) {
+                    rawKOPointsFixed += ruleVal;
+                }
                 rawKOPointsProvisional += ruleVal;
             }
         });
@@ -1081,6 +1225,23 @@ function renderKORounds() {
             const flagHome = getFlagHtml(t1, true);
             const flagAway = getFlagHtml(t2, true);
 
+            // Check if matchup is provisional (calculated dynamically from group standings)
+            let isProvisionalMatchup = false;
+            let officialMatchObj = null;
+            if (r.prefix === 'r32_matches') officialMatchObj = officialResults.r32_matches[matchKey];
+            else if (r.prefix === 'r16_matches') officialMatchObj = officialResults.r16_matches[matchKey];
+            else if (r.prefix === 'r8_matches') officialMatchObj = officialResults.r8_matches[matchKey];
+            else if (r.prefix === 'r4_matches') officialMatchObj = officialResults.r4_matches[matchKey];
+            else if (r.prefix === 'single') {
+                if (matchKey === 'r3_4_match') officialMatchObj = officialResults.r3_4_match;
+                else if (matchKey === 'final_match') officialMatchObj = officialResults.final_match;
+            }
+            if (matchup && (!officialMatchObj || !officialMatchObj.matchup || officialMatchObj.matchup.trim() === "")) {
+                isProvisionalMatchup = true;
+            }
+
+            const provAsterisk = isProvisionalMatchup ? ' <span style="color:var(--color-success); font-weight:bold; font-size:1.1rem; line-height:0;" title="Cruce provisional (Fase de grupos activa)">*</span>' : '';
+
             let slotLabel = "";
             if (r.key === 'r32') {
                 slotLabel = `Cruce ${matchKey}`;
@@ -1098,7 +1259,7 @@ function renderKORounds() {
 
             const cardHeader = `
                 <div class="match-header">
-                    <span style="font-weight: 600; color: var(--color-primary-hover);">${slotLabel}</span>
+                    <span style="font-weight: 600; color: var(--color-primary-hover);">${slotLabel}${provAsterisk}</span>
                     <span>${r.name}</span>
                 </div>
             `;
@@ -1584,6 +1745,20 @@ function evaluateKOBracketMatch(card, stageLabel, matchKey, predVal, actualMatch
         pts = outcome.points / 2.0; // Net points
     }
 
+    let isProvisionalMatchup = false;
+    let officialMatchObj = null;
+    if (actualMatchesList === results.r32_matches) officialMatchObj = officialResults.r32_matches[matchKey];
+    else if (actualMatchesList === results.r16_matches) officialMatchObj = officialResults.r16_matches[matchKey];
+    else if (actualMatchesList === results.r8_matches) officialMatchObj = officialResults.r8_matches[matchKey];
+    else if (actualMatchesList === results.r4_matches) officialMatchObj = officialResults.r4_matches[matchKey];
+    
+    if (actualMatchup && (!officialMatchObj || !officialMatchObj.matchup || officialMatchObj.matchup.trim() === "")) {
+        isProvisionalMatchup = true;
+    }
+
+    const provLabel = isProvisionalMatchup ? ' <span style="color:var(--color-success); font-weight:700;" title="Cruces provisionales">*</span>' : '';
+    const displayMatchupHtml = actualMatchup ? getMatchupFlagsHtml(actualMatchup) + provLabel : 'Pendiente';
+
     const container = card.querySelector('.ko-items-container');
     const div = document.createElement('div');
     div.classList.add('ko-pred-item');
@@ -1602,7 +1777,7 @@ function evaluateKOBracketMatch(card, stageLabel, matchKey, predVal, actualMatch
             <span style="font-size:0.8rem; color:#fff">Predicción: ${getMatchupFlagsHtml(predMatchup)} (${predScore})</span>
         </div>
         <div class="ko-pred-val">
-            <span style="font-size:0.8rem; color:var(--text-muted)">Real: ${actualMatchup ? getMatchupFlagsHtml(actualMatchup) : 'Pendiente'} ${actualScore ? '('+actualScore+')' : ''}</span>
+            <span style="font-size:0.8rem; color:var(--text-muted)">Real: ${displayMatchupHtml} ${actualScore ? '('+actualScore+')' : ''}</span>
             ${ptsLabel}
         </div>
     `;
@@ -1631,6 +1806,18 @@ function evaluateSingleKOMatch(card, label, predVal, actualMatchObj) {
         pts = outcome.points / 2.0; // Net points
     }
 
+    let isProvisionalMatchup = false;
+    let officialMatchObj = null;
+    if (actualMatchObj === results.r3_4_match) officialMatchObj = officialResults.r3_4_match;
+    else if (actualMatchObj === results.final_match) officialMatchObj = officialResults.final_match;
+
+    if (actualMatchup && (!officialMatchObj || !officialMatchObj.matchup || officialMatchObj.matchup.trim() === "")) {
+        isProvisionalMatchup = true;
+    }
+
+    const provLabel = isProvisionalMatchup ? ' <span style="color:var(--color-success); font-weight:700;" title="Cruces provisionales">*</span>' : '';
+    const displayMatchupHtml = actualMatchup ? getMatchupFlagsHtml(actualMatchup) + provLabel : 'Pendiente';
+
     const container = card.querySelector('.ko-items-container');
     const div = document.createElement('div');
     div.classList.add('ko-pred-item');
@@ -1649,7 +1836,7 @@ function evaluateSingleKOMatch(card, label, predVal, actualMatchObj) {
             <span style="font-size:0.8rem; color:#fff">Predicción: ${getMatchupFlagsHtml(predMatchup)} (${predScore})</span>
         </div>
         <div class="ko-pred-val">
-            <span style="font-size:0.8rem; color:var(--text-muted)">Real: ${actualMatchup ? getMatchupFlagsHtml(actualMatchup) : 'Pendiente'} ${actualScore ? '('+actualScore+')' : ''}</span>
+            <span style="font-size:0.8rem; color:var(--text-muted)">Real: ${displayMatchupHtml} ${actualScore ? '('+actualScore+')' : ''}</span>
             ${ptsLabel}
         </div>
     `;
@@ -1887,6 +2074,9 @@ async function fetchAndProcessLiveResults() {
         }
 
         console.log(`Retrieved ${matches.length} matches from API. Processing...`);
+
+        // Fill provisional R32 matchups first so K.O. live match checks will match the teams
+        fillProvisionalR32Matchups();
 
         // Capture previous JSON state to check if anything changed
         const prevResultsJSON = JSON.stringify(results);
