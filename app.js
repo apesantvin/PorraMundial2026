@@ -7,6 +7,44 @@ let activeTab = 'clasificacion';
 let currentFilter = 'all';
 let evolutionChart = null;
 
+// Global Match Number to Match Key mappings
+const MATCH_KEYS_BY_NUMBER = {
+    // R32
+    '73': '2A-2B',
+    '74': '1C-2F',
+    '75': '1E-3ABCDF',
+    '76': '1F-2C',
+    '77': '2E-2I',
+    '78': '1I-3CDFGH',
+    '79': '1A-3CEFHI',
+    '80': '1L-3EHIJK',
+    '81': '1G-3AEHIJ',
+    '82': '1D-3BEFIJ',
+    '83': '1H-2J',
+    '84': '2K-2L',
+    '85': '1B-3EFGIJ',
+    '86': '2D-2G',
+    '87': '1J-2H',
+    '88': '1K-3DEIJL',
+    // R16
+    '89': 'W74-W77',
+    '90': 'W73-W75',
+    '91': 'W76-W78',
+    '92': 'W79-W80',
+    '93': 'W83-W84',
+    '94': 'W81-W82',
+    '95': 'W86-W88',
+    '96': 'W85-W87',
+    // R8
+    '97': 'W89-W90',
+    '98': 'W93-W94',
+    '99': 'W91-W92',
+    '100': 'W95-W96',
+    // R4
+    '101': 'W97-W98',
+    '102': 'W99-W100'
+};
+
 // Merges cached live results into the in-memory results object
 function mergeLiveCache() {
     const liveCache = localStorage.getItem('porra_live_results_cache');
@@ -430,42 +468,7 @@ function fillProvisionalR32Matchups() {
 
 // Dynamically propagate winners through K.O. stages based on match scores
 function fillProvisionalKOMatchups() {
-    const matchKeysByNumber = {
-        // R32
-        '73': '2A-2B',
-        '74': '1C-2F',
-        '75': '1E-3ABCDF',
-        '76': '1F-2C',
-        '77': '2E-2I',
-        '78': '1I-3CDFGH',
-        '79': '1A-3CEFHI',
-        '80': '1L-3EHIJK',
-        '81': '1G-3AEHIJ',
-        '82': '1D-3BEFIJ',
-        '83': '1H-2J',
-        '84': '2K-2L',
-        '85': '1B-3EFGIJ',
-        '86': '2D-2G',
-        '87': '1J-2H',
-        '88': '1K-3DEIJL',
-        // R16
-        '89': 'W74-W77',
-        '90': 'W73-W75',
-        '91': 'W76-W78',
-        '92': 'W79-W80',
-        '93': 'W83-W84',
-        '94': 'W81-W82',
-        '95': 'W86-W88',
-        '96': 'W85-W87',
-        // R8
-        '97': 'W89-W90',
-        '98': 'W93-W94',
-        '99': 'W91-W92',
-        '100': 'W95-W96',
-        // R4
-        '101': 'W97-W98',
-        '102': 'W99-W100'
-    };
+
 
     const matchWinner = {};
     const matchLoser = {};
@@ -511,7 +514,7 @@ function fillProvisionalKOMatchups() {
 
     // 1. Process R32
     Object.entries(results.r32_matches || {}).forEach(([key, m]) => {
-        const num = Object.keys(matchKeysByNumber).find(n => matchKeysByNumber[n] === key && parseInt(n) >= 73 && parseInt(n) <= 88);
+        const num = Object.keys(MATCH_KEYS_BY_NUMBER).find(n => MATCH_KEYS_BY_NUMBER[n] === key && parseInt(n) >= 73 && parseInt(n) <= 88);
         if (num) {
             const res = resolveWinnerAndLoser(m);
             if (res) {
@@ -551,7 +554,7 @@ function fillProvisionalKOMatchups() {
 
     // 3. Process R16
     Object.entries(results.r16_matches || {}).forEach(([key, m]) => {
-        const num = Object.keys(matchKeysByNumber).find(n => matchKeysByNumber[n] === key && parseInt(n) >= 89 && parseInt(n) <= 96);
+        const num = Object.keys(MATCH_KEYS_BY_NUMBER).find(n => MATCH_KEYS_BY_NUMBER[n] === key && parseInt(n) >= 89 && parseInt(n) <= 96);
         if (num) {
             const res = resolveWinnerAndLoser(m);
             if (res) {
@@ -578,7 +581,7 @@ function fillProvisionalKOMatchups() {
 
     // 5. Process R8
     Object.entries(results.r8_matches || {}).forEach(([key, m]) => {
-        const num = Object.keys(matchKeysByNumber).find(n => matchKeysByNumber[n] === key && parseInt(n) >= 97 && parseInt(n) <= 100);
+        const num = Object.keys(MATCH_KEYS_BY_NUMBER).find(n => MATCH_KEYS_BY_NUMBER[n] === key && parseInt(n) >= 97 && parseInt(n) <= 100);
         if (num) {
             const res = resolveWinnerAndLoser(m);
             if (res) {
@@ -605,7 +608,7 @@ function fillProvisionalKOMatchups() {
 
     // 7. Process R4
     Object.entries(results.r4_matches || {}).forEach(([key, m]) => {
-        const num = Object.keys(matchKeysByNumber).find(n => matchKeysByNumber[n] === key && parseInt(n) >= 101 && parseInt(n) <= 102);
+        const num = Object.keys(MATCH_KEYS_BY_NUMBER).find(n => MATCH_KEYS_BY_NUMBER[n] === key && parseInt(n) >= 101 && parseInt(n) <= 102);
         if (num) {
             const res = resolveWinnerAndLoser(m);
             if (res) {
@@ -1571,37 +1574,37 @@ function renderKORounds() {
     ];
 
     const koMatchDates = {
-        '2A-2B': '28 Jun 13:00 PM',
-        '1C-2F': '29 Jun 11:00 PM',
-        '1E-3ABCDF': '29 Jun 14:30 PM',
-        '1F-2C': '29 Jun 19:00 PM',
-        '2E-2I': '30 Jun 11:00 PM',
-        '1I-3CDFGH': '30 Jun 15:00 PM',
-        '1A-3CEFHI': '30 Jun 19:00 PM',
-        '1L-3EHIJK': '01 Jul 10:00 AM',
-        '1G-3AEHIJ': '01 Jul 14:00 PM',
-        '1D-3BEFIJ': '01 Jul 18:00 PM',
-        '1H-2J': '02 Jul 13:00 PM',
-        '2K-2L': '02 Jul 17:00 PM',
-        '1B-3EFGIJ': '02 Jul 21:00 PM',
-        '2D-2G': '03 Jul 12:00 PM',
-        '1J-2H': '03 Jul 16:00 PM',
-        '1K-3DEIJL': '03 Jul 19:30 PM',
-        'W73-W75': '04 Jul 21:00',
-        'W74-W77': '04 Jul 23:59',
-        'W76-W78': '05 Jul 18:00',
-        'W79-W80': '05 Jul 21:00',
-        'W83-W84': '06 Jul 18:00',
-        'W81-W82': '06 Jul 21:00',
+        '2A-2B': '28 Jun 21:00',
+        '1C-2F': '29 Jun 19:00',
+        '1E-3ABCDF': '29 Jun 22:30',
+        '1F-2C': '30 Jun 03:00',
+        '2E-2I': '30 Jun 19:00',
+        '1I-3CDFGH': '30 Jun 23:00',
+        '1A-3CEFHI': '01 Jul 03:00',
+        '1L-3EHIJK': '01 Jul 18:00',
+        '1G-3AEHIJ': '01 Jul 22:00',
+        '1D-3BEFIJ': '02 Jul 02:00',
+        '1H-2J': '02 Jul 21:00',
+        '2K-2L': '03 Jul 01:00',
+        '1B-3EFGIJ': '03 Jul 05:00',
+        '2D-2G': '03 Jul 20:00',
+        '1J-2H': '04 Jul 00:00',
+        '1K-3DEIJL': '04 Jul 03:30',
+        'W74-W77': '04 Jul 19:00',
+        'W73-W75': '04 Jul 23:00',
+        'W76-W78': '05 Jul 22:00',
+        'W79-W80': '06 Jul 02:00',
+        'W83-W84': '06 Jul 21:00',
+        'W81-W82': '07 Jul 02:00',
         'W86-W88': '07 Jul 18:00',
-        'W85-W87': '07 Jul 21:00',
-        'W89-W90': '09 Jul 21:00',
-        'W91-W92': '10 Jul 18:00',
+        'W85-W87': '07 Jul 22:00',
+        'W89-W90': '09 Jul 22:00',
         'W93-W94': '10 Jul 21:00',
-        'W95-W96': '11 Jul 21:00',
+        'W91-W92': '11 Jul 23:00',
+        'W95-W96': '12 Jul 03:00',
         'W97-W98': '14 Jul 21:00',
         'W99-W100': '15 Jul 21:00',
-        'r3_4_match': '18 Jul 21:00',
+        'r3_4_match': '18 Jul 23:00',
         'final_match': '19 Jul 21:00'
     };
 
@@ -1664,42 +1667,7 @@ function renderKORounds() {
         return clean.substring(0, 3).toUpperCase();
     }
 
-    const matchKeysByNumber = {
-        // R32
-        '73': '2A-2B',
-        '74': '1C-2F',
-        '75': '1E-3ABCDF',
-        '76': '1F-2C',
-        '77': '2E-2I',
-        '78': '1I-3CDFGH',
-        '79': '1A-3CEFHI',
-        '80': '1L-3EHIJK',
-        '81': '1G-3AEHIJ',
-        '82': '1D-3BEFIJ',
-        '83': '1H-2J',
-        '84': '2K-2L',
-        '85': '1B-3EFGIJ',
-        '86': '2D-2G',
-        '87': '1J-2H',
-        '88': '1K-3DEIJL',
-        // R16
-        '89': 'W74-W77',
-        '90': 'W73-W75',
-        '91': 'W76-W78',
-        '92': 'W79-W80',
-        '93': 'W83-W84',
-        '94': 'W81-W82',
-        '95': 'W86-W88',
-        '96': 'W85-W87',
-        // R8
-        '97': 'W89-W90',
-        '98': 'W93-W94',
-        '99': 'W91-W92',
-        '100': 'W95-W96',
-        // R4
-        '101': 'W97-W98',
-        '102': 'W99-W100'
-    };
+
 
     function parseR32SlotCode(slotCode) {
         const match = slotCode.match(/^(\d)([A-L])$/);
@@ -1719,7 +1687,7 @@ function renderKORounds() {
         const match = slotCode.match(/^W(\d+)$/);
         if (match) {
             const num = match[1];
-            const key = matchKeysByNumber[num];
+            const key = MATCH_KEYS_BY_NUMBER[num];
             let roundName = "";
             const numVal = parseInt(num);
             if (numVal >= 73 && numVal <= 88) roundName = "Dieciseisavos";
@@ -1736,7 +1704,7 @@ function renderKORounds() {
         const match = slotCode.match(/^L(\d+)$/);
         if (match) {
             const num = match[1];
-            const key = matchKeysByNumber[num];
+            const key = MATCH_KEYS_BY_NUMBER[num];
             return `Perdedor de Semifinal (${key})`;
         }
         return slotCode;
@@ -1861,18 +1829,20 @@ function renderKORounds() {
 
         let slotLabel = "";
         let slotTitle = "";
+        const matchNum = Object.keys(MATCH_KEYS_BY_NUMBER).find(n => MATCH_KEYS_BY_NUMBER[n] === matchKey);
+
         if (r.key === 'r32') {
-            slotLabel = matchKey;
-            slotTitle = `Dieciseisavos: Cruce ${matchKey}`;
+            slotLabel = matchNum ? `#${matchNum}` : matchKey;
+            slotTitle = `Dieciseisavos: Partido ${matchNum || matchKey} (Cruce: ${matchKey})`;
         } else if (r.key === 'r16') {
-            slotLabel = matchKey;
-            slotTitle = `Octavos: ${matchKey}`;
+            slotLabel = matchNum ? `#${matchNum}` : matchKey;
+            slotTitle = `Octavos: Partido ${matchNum || matchKey} (Cruce: ${matchKey})`;
         } else if (r.key === 'r8') {
-            slotLabel = matchKey;
-            slotTitle = `Cuartos: ${matchKey}`;
+            slotLabel = matchNum ? `#${matchNum}` : matchKey;
+            slotTitle = `Cuartos: Partido ${matchNum || matchKey} (Cruce: ${matchKey})`;
         } else if (r.key === 'r4') {
-            slotLabel = matchKey;
-            slotTitle = `Semifinal: ${matchKey}`;
+            slotLabel = matchNum ? `#${matchNum}` : matchKey;
+            slotTitle = `Semifinal: Partido ${matchNum || matchKey} (Cruce: ${matchKey})`;
         } else if (matchKey === 'r3_4_match') {
             slotLabel = `3º Puesto`;
             slotTitle = `Tercer y Cuarto Puesto`;
@@ -2453,9 +2423,12 @@ function evaluateKOBracketMatch(card, stageLabel, matchKey, predVal, actualMatch
         ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted)">0.0 pts</span>`;
     }
 
+    const matchNum = Object.keys(MATCH_KEYS_BY_NUMBER).find(n => MATCH_KEYS_BY_NUMBER[n] === matchKey);
+    const labelText = matchNum ? `#${matchNum}` : matchKey;
+
     div.innerHTML = `
         <div class="ko-pred-label">
-            <strong>${stageLabel} - ${matchKey}</strong><br>
+            <strong title="Cruce original: ${matchKey}">${stageLabel} - ${labelText}</strong><br>
             <span style="font-size:0.8rem; color:#fff">Predicción: ${getMatchupFlagsHtml(predMatchup)} (${predScore})</span>
         </div>
         <div class="ko-pred-val">

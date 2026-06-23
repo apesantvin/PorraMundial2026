@@ -1816,8 +1816,8 @@ span.placeholder-flag i {
 .ko-bracket-column {
     display: flex;
     flex-direction: column;
-    min-width: 170px;
-    max-width: 200px;
+    min-width: 180px;
+    max-width: 215px;
     flex-grow: 1;
 }
 
@@ -1885,11 +1885,18 @@ span.placeholder-flag i {
 .ko-match-card-header {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     font-size: 0.65rem;
     color: var(--text-muted);
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     padding-bottom: 0.25rem;
     font-weight: 600;
+    gap: 0.5rem;
+}
+.ko-match-card-header span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Match teams layout */
