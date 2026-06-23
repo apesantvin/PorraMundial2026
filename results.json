@@ -26,24 +26,24 @@
     "24": "1-3",
     "25": "1-1",
     "26": "4-1",
-    "27": "",
-    "28": "",
-    "29": "",
-    "30": "",
-    "31": "",
-    "32": "",
-    "33": "",
-    "34": "",
-    "35": "",
-    "36": "",
-    "37": "",
-    "38": "",
-    "39": "",
-    "40": "",
-    "41": "",
-    "42": "",
-    "43": "",
-    "44": "",
+    "27": "6-0",
+    "28": "1-0",
+    "29": "3-0",
+    "30": "0-1",
+    "31": "0-1",
+    "32": "2-0",
+    "33": "2-1",
+    "34": "0-0",
+    "35": "5-1",
+    "36": "0-4",
+    "37": "2-2",
+    "38": "4-0",
+    "39": "0-0",
+    "40": "1-3",
+    "41": "3-2",
+    "42": "3-0",
+    "43": "2-0",
+    "44": "1-2",
     "45": "",
     "46": "",
     "47": "",
@@ -123,70 +123,103 @@
     "3º GRUPO L": "",
     "4º GRUPO L": ""
   },
-  "r32_teams": [],
+  "r32_teams": [
+    "México",
+    "Corea del Sur",
+    "Canadá",
+    "Suiza",
+    "Brasil",
+    "Marruecos",
+    "Estados Unidos",
+    "Australia",
+    "Alemania",
+    "Costa de Marfil",
+    "Países Bajos",
+    "Japón",
+    "Egipto",
+    "Irán",
+    "España",
+    "Uruguay",
+    "Noruega",
+    "Francia",
+    "Argentina",
+    "Austria",
+    "Colombia",
+    "Portugal",
+    "Inglaterra",
+    "Ghana",
+    "Suecia",
+    "Escocia",
+    "Paraguay",
+    "Cabo Verde",
+    "Bélgica",
+    "RD Congo",
+    "República Checa",
+    "Ecuador"
+  ],
   "r32_matches": {
     "2A-2B": {
-      "matchup": "",
+      "matchup": "Corea del Sur-Suiza",
       "score": ""
     },
     "1C-2F": {
-      "matchup": "",
+      "matchup": "Brasil-Japón",
       "score": ""
     },
     "1E-3ABCDF": {
-      "matchup": "",
+      "matchup": "Alemania-Suecia",
       "score": ""
     },
     "1F-2C": {
-      "matchup": "",
+      "matchup": "Países Bajos-Marruecos",
       "score": ""
     },
     "2E-2I": {
-      "matchup": "",
+      "matchup": "Costa de Marfil-Noruega",
       "score": ""
     },
     "1I-3CDFGH": {
-      "matchup": "",
+      "matchup": "Francia-Escocia",
       "score": ""
     },
     "1A-3CEFHI": {
-      "matchup": "",
+      "matchup": "México-Cabo Verde",
       "score": ""
     },
     "1L-3EHIJK": {
-      "matchup": "",
+      "matchup": "Inglaterra-RD Congo",
       "score": ""
     },
     "1G-3AEHIJ": {
-      "matchup": "",
+      "matchup": "Egipto-República Checa",
       "score": ""
     },
     "1D-3BEFIJ": {
-      "matchup": "",
+      "matchup": "Estados Unidos-Argelia",
       "score": ""
     },
     "1H-2J": {
-      "matchup": "",
+      "matchup": "España-Austria",
       "score": ""
     },
     "2K-2L": {
-      "matchup": "",
+      "matchup": "Portugal-Ghana",
       "score": ""
     },
     "1B-3EFGIJ": {
-      "matchup": "",
+      "matchup": "Canadá-Bélgica",
       "score": ""
     },
     "2D-2G": {
-      "matchup": "",
+      "matchup": "Australia-Irán",
       "score": ""
     },
     "1J-2H": {
-      "matchup": "",
+      "matchup": "Argentina-Uruguay",
       "score": ""
     },
     "1K-3DEIJL": {
-      "matchup": "",
+      "matchup": "Colombia-Paraguay",
       "score": ""
     }
   },
