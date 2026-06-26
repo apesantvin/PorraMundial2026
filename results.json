@@ -44,22 +44,22 @@
     "42": "3-0",
     "43": "2-0",
     "44": "1-2",
-    "45": "",
-    "46": "",
+    "45": "0-0",
+    "46": "0-1",
     "47": "5-0",
-    "48": "",
-    "49": "",
-    "50": "",
-    "51": "",
-    "52": "",
-    "53": "",
-    "54": "",
-    "55": "",
-    "56": "",
-    "57": "",
-    "58": "",
-    "59": "",
-    "60": "",
+    "48": "1-0",
+    "49": "0-3",
+    "50": "4-2",
+    "51": "2-1",
+    "52": "3-1",
+    "53": "0-3",
+    "54": "1-0",
+    "55": "0-2",
+    "56": "2-1",
+    "57": "1-1",
+    "58": "1-3",
+    "59": "3-2",
+    "60": "0-0",
     "61": "",
     "62": "",
     "63": "",
@@ -226,76 +226,76 @@
   "r16_teams": [],
   "r16_matches": {
     "W73-W75": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W74-W77": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W76-W78": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W79-W80": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W83-W84": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W81-W82": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W86-W88": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W85-W87": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     }
   },
   "r8_teams": [],
   "r8_matches": {
     "W89-W90": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W93-W94": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W91-W92": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W95-W96": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     }
   },
   "r4_teams": [],
   "r4_matches": {
     "W97-W98": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     },
     "W99-W100": {
-      "matchup": "",
+      "matchup": "Por determinar-Por determinar",
       "score": ""
     }
   },
   "r3_4_teams": [],
   "final_teams": [],
   "r3_4_match": {
-    "matchup": "",
+    "matchup": "Por determinar-Por determinar",
     "score": ""
   },
   "final_match": {
-    "matchup": "",
+    "matchup": "Por determinar-Por determinar",
     "score": ""
   },
   "honor_champ": "",
