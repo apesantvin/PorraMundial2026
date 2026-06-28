@@ -2418,9 +2418,17 @@ function evaluateKOBracketMatch(card, stageLabel, matchKey, predVal, actualMatch
     
     let ptsLabel = '';
     if (pts > 0) {
-        ptsLabel = `<span class="ko-points-won" style="color:var(--color-success)">+${pts.toFixed(1)} pts</span>`;
+        ptsLabel = `<span class="ko-points-won" style="color:var(--color-success); font-weight:700;">+${pts.toFixed(1)} pts</span>`;
     } else {
-        ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted)">0.0 pts</span>`;
+        if (!actualMatchup || actualMatchup.trim() === "") {
+            ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted); font-size:0.8rem;" title="El cruce real aún está pendiente de decidir">0.0 pts (Pendiente)</span>`;
+        } else if (!isMatchupCorrect) {
+            ptsLabel = `<span class="ko-points-won" style="color:#ef4444; font-size:0.8rem; font-weight:600;" title="No puntúa por no haber acertado el enfrentamiento exacto">0.0 pts (Cruce incorrecto)</span>`;
+        } else if (!actualScore || actualScore.trim() === "") {
+            ptsLabel = `<span class="ko-points-won" style="color:var(--color-accent); font-size:0.8rem; font-weight:600;" title="Enfrentamiento acertado. Esperando a que se juegue el partido">0.0 pts (Cruce acertado)</span>`;
+        } else {
+            ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted); font-size:0.8rem;" title="Fallo en la predicción del resultado (1X2/marcador/diferencia) sobre un cruce acertado">0.0 pts (Fallo)</span>`;
+        }
     }
 
     const matchNum = Object.keys(MATCH_KEYS_BY_NUMBER).find(n => MATCH_KEYS_BY_NUMBER[n] === matchKey);
@@ -2480,9 +2488,17 @@ function evaluateSingleKOMatch(card, label, predVal, actualMatchObj) {
     
     let ptsLabel = '';
     if (pts > 0) {
-        ptsLabel = `<span class="ko-points-won" style="color:var(--color-success)">+${pts.toFixed(1)} pts</span>`;
+        ptsLabel = `<span class="ko-points-won" style="color:var(--color-success); font-weight:700;">+${pts.toFixed(1)} pts</span>`;
     } else {
-        ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted)">0.0 pts</span>`;
+        if (!actualMatchup || actualMatchup.trim() === "") {
+            ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted); font-size:0.8rem;" title="El cruce real aún está pendiente de decidir">0.0 pts (Pendiente)</span>`;
+        } else if (!isMatchupCorrect) {
+            ptsLabel = `<span class="ko-points-won" style="color:#ef4444; font-size:0.8rem; font-weight:600;" title="No puntúa por no haber acertado el enfrentamiento exacto">0.0 pts (Cruce incorrecto)</span>`;
+        } else if (!actualScore || actualScore.trim() === "") {
+            ptsLabel = `<span class="ko-points-won" style="color:var(--color-accent); font-size:0.8rem; font-weight:600;" title="Enfrentamiento acertado. Esperando a que se juegue el partido">0.0 pts (Cruce acertado)</span>`;
+        } else {
+            ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted); font-size:0.8rem;" title="Fallo en la predicción del resultado (1X2/marcador/diferencia) sobre un cruce acertado">0.0 pts (Fallo)</span>`;
+        }
     }
 
     div.innerHTML = `
