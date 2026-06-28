@@ -330,7 +330,11 @@
             <div class="modal-body">
                 <div class="tabs-sub">
                     <button class="tab-sub-btn active" data-subtab="modal-groups">Fase de Grupos</button>
-                    <button class="tab-sub-btn" data-subtab="modal-elimination">Fases K.O. y Especiales</button>
+                    <button class="tab-sub-btn" data-subtab="modal-r32">Dieciseisavos (1/16)</button>
+                    <button class="tab-sub-btn" data-subtab="modal-r16">Octavos (1/8)</button>
+                    <button class="tab-sub-btn" data-subtab="modal-r8">Cuartos (1/4)</button>
+                    <button class="tab-sub-btn" data-subtab="modal-final-semis">Semis / Finales</button>
+                    <button class="tab-sub-btn" data-subtab="modal-specials">Posiciones / Honor</button>
                 </div>
                 
                 <div class="modal-tab-content active" id="modal-groups">
@@ -352,10 +356,62 @@
                     </div>
                 </div>
                 
-                <div class="modal-tab-content" id="modal-elimination">
-                    <div class="ko-predictions-list" id="modal-ko-list">
+                <div class="modal-tab-content" id="modal-r32">
+                    <div class="ko-predictions-list" id="modal-r32-list">
                         <!-- Populated dynamically -->
                     </div>
+                </div>
+                
+                <div class="modal-tab-content" id="modal-r16">
+                    <div class="ko-predictions-list" id="modal-r16-list">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+                
+                <div class="modal-tab-content" id="modal-r8">
+                    <div class="ko-predictions-list" id="modal-r8-list">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+                
+                <div class="modal-tab-content" id="modal-final-semis">
+                    <div class="ko-predictions-list" id="modal-final-semis-list">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+                <div class="modal-tab-content" id="modal-specials">
+                    <div class="ko-predictions-list" id="modal-specials-list">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MATCH DETAIL MODAL -->
+    <div class="modal-overlay" id="match-predictions-modal">
+        <div class="modal-container" style="max-width: 600px;">
+            <button class="modal-close" id="match-modal-close-btn">&times;</button>
+            <div class="modal-header" style="flex-direction: column; align-items: center; text-align: center; gap: 0.5rem;">
+                <h3 id="modal-match-title" style="margin: 0; font-family: var(--font-heading); color: var(--color-accent);">Pronósticos del Partido</h3>
+                <div class="modal-score-summary" id="modal-match-details" style="font-size: 0.9rem; opacity: 0.9; font-weight: 500;">
+                    <!-- Date and description -->
+                </div>
+            </div>
+            <div class="modal-body" style="padding-top: 0.5rem;">
+                <div class="table-responsive">
+                    <table class="table table-compact">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th class="text-center" style="width: 1%; white-space: nowrap;">Predicción</th>
+                                <th class="text-center" style="width: 1%; white-space: nowrap;">Puntos</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modal-match-preds-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

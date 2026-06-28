@@ -45,6 +45,42 @@ const MATCH_KEYS_BY_NUMBER = {
     '102': 'W99-W100'
 };
 
+// Global KO match dates
+const koMatchDates = {
+    '2A-2B': '28 Jun 21:00',
+    '1C-2F': '29 Jun 19:00',
+    '1E-3ABCDF': '29 Jun 22:30',
+    '1F-2C': '30 Jun 03:00',
+    '2E-2I': '30 Jun 19:00',
+    '1I-3CDFGH': '30 Jun 23:00',
+    '1A-3CEFHI': '01 Jul 03:00',
+    '1L-3EHIJK': '01 Jul 18:00',
+    '1G-3AEHIJ': '01 Jul 22:00',
+    '1D-3BEFIJ': '02 Jul 02:00',
+    '1H-2J': '02 Jul 21:00',
+    '2K-2L': '03 Jul 01:00',
+    '1B-3EFGIJ': '03 Jul 05:00',
+    '2D-2G': '03 Jul 20:00',
+    '1J-2H': '04 Jul 00:00',
+    '1K-3DEIJL': '04 Jul 03:30',
+    'W74-W77': '04 Jul 19:00',
+    'W73-W75': '04 Jul 23:00',
+    'W76-W78': '05 Jul 22:00',
+    'W79-W80': '06 Jul 02:00',
+    'W83-W84': '06 Jul 21:00',
+    'W81-W82': '07 Jul 02:00',
+    'W86-W88': '07 Jul 18:00',
+    'W85-W87': '07 Jul 22:00',
+    'W89-W90': '09 Jul 22:00',
+    'W93-W94': '10 Jul 21:00',
+    'W91-W92': '11 Jul 23:00',
+    'W95-W96': '12 Jul 03:00',
+    'W97-W98': '14 Jul 21:00',
+    'W99-W100': '15 Jul 21:00',
+    'r3_4_match': '18 Jul 23:00',
+    'final_match': '19 Jul 21:00'
+};
+
 // Merges cached live results into the in-memory results object
 function mergeLiveCache() {
     const liveCache = localStorage.getItem('porra_live_results_cache');
@@ -1573,40 +1609,7 @@ function renderKORounds() {
         }
     ];
 
-    const koMatchDates = {
-        '2A-2B': '28 Jun 21:00',
-        '1C-2F': '29 Jun 19:00',
-        '1E-3ABCDF': '29 Jun 22:30',
-        '1F-2C': '30 Jun 03:00',
-        '2E-2I': '30 Jun 19:00',
-        '1I-3CDFGH': '30 Jun 23:00',
-        '1A-3CEFHI': '01 Jul 03:00',
-        '1L-3EHIJK': '01 Jul 18:00',
-        '1G-3AEHIJ': '01 Jul 22:00',
-        '1D-3BEFIJ': '02 Jul 02:00',
-        '1H-2J': '02 Jul 21:00',
-        '2K-2L': '03 Jul 01:00',
-        '1B-3EFGIJ': '03 Jul 05:00',
-        '2D-2G': '03 Jul 20:00',
-        '1J-2H': '04 Jul 00:00',
-        '1K-3DEIJL': '04 Jul 03:30',
-        'W74-W77': '04 Jul 19:00',
-        'W73-W75': '04 Jul 23:00',
-        'W76-W78': '05 Jul 22:00',
-        'W79-W80': '06 Jul 02:00',
-        'W83-W84': '06 Jul 21:00',
-        'W81-W82': '07 Jul 02:00',
-        'W86-W88': '07 Jul 18:00',
-        'W85-W87': '07 Jul 22:00',
-        'W89-W90': '09 Jul 22:00',
-        'W93-W94': '10 Jul 21:00',
-        'W91-W92': '11 Jul 23:00',
-        'W95-W96': '12 Jul 03:00',
-        'W97-W98': '14 Jul 21:00',
-        'W99-W100': '15 Jul 21:00',
-        'r3_4_match': '18 Jul 23:00',
-        'final_match': '19 Jul 21:00'
-    };
+    // koMatchDates is declared globally at the top level
 
     const fifaCodes = {
         'México': 'MEX',
@@ -1775,7 +1778,8 @@ function renderKORounds() {
 
         const card = document.createElement('div');
         card.classList.add('ko-bracket-match');
-        card.style.cursor = 'default';
+        card.style.cursor = 'pointer';
+        card.setAttribute('title', 'Haz clic para ver los pronósticos de todos los participantes');
         
         if (isLive) {
             card.classList.add('live-match-highlight');
@@ -1863,7 +1867,7 @@ function renderKORounds() {
         card.innerHTML = `
             <div class="ko-match-card-header">
                 <span style="font-weight: 600; color: var(--color-primary-hover);" title="${slotTitle}">${slotLabel}${provAsterisk}</span>
-                <span title="Fecha de juego">${matchDateStr}</span>
+                <span title="Fecha de juego">${matchDateStr} <span class="expand-icon" style="margin-left:0.25rem; color:var(--text-muted); font-size:0.75rem;"><i class="fa-regular fa-eye"></i></span></span>
             </div>
             <div class="ko-match-card-body">
                 <div class="ko-match-team-row">
@@ -1882,6 +1886,9 @@ function renderKORounds() {
                 </div>
             </div>
         `;
+
+        card.addEventListener('click', () => openMatchPredictionsModal(r, matchKey));
+
         return card;
     }
 
@@ -2027,6 +2034,11 @@ function setupEventListeners() {
         if (e.target.id === 'player-modal') closePlayerModal();
     });
     
+    document.getElementById('match-modal-close-btn').addEventListener('click', closeMatchPredictionsModal);
+    document.getElementById('match-predictions-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'match-predictions-modal') closeMatchPredictionsModal();
+    });
+    
 
 
     // Modal sub-tabs
@@ -2164,14 +2176,37 @@ function openPlayerModal(playerName) {
         groupsBody.appendChild(tr);
     });
 
-    // Render K.O. stages and Specials predictions
-    const koList = document.getElementById('modal-ko-list');
-    koList.innerHTML = '';
+    // Reset active subtabs to first one when modal opens
+    document.querySelectorAll('.tab-sub-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.modal-tab-content').forEach(c => c.classList.remove('active'));
+    const firstSubTab = document.querySelector('.tab-sub-btn');
+    if (firstSubTab) {
+        firstSubTab.classList.add('active');
+        const firstContent = document.getElementById(firstSubTab.getAttribute('data-subtab'));
+        if (firstContent) firstContent.classList.add('active');
+    }
+
+    // Reference and clear all the subtab container lists
+    const r32List = document.getElementById('modal-r32-list');
+    r32List.innerHTML = '';
     
-    // Add sections for Special predictions
+    const r16List = document.getElementById('modal-r16-list');
+    r16List.innerHTML = '';
+    
+    const r8List = document.getElementById('modal-r8-list');
+    r8List.innerHTML = '';
+    
+    const finalSemisList = document.getElementById('modal-final-semis-list');
+    finalSemisList.innerHTML = '';
+    
+    const specialsList = document.getElementById('modal-specials-list');
+    specialsList.innerHTML = '';
+
     const playerPreds = porraData.predictions[player.name];
 
-    // Standings Predictions
+    // --- Tab 6: Posiciones / Honor (Posiciones de Grupo y Cuadro de Honor) ---
+    
+    // Standings Predictions (Positions 1º to 4º)
     const standingsCard = createKOCard("Predicciones de Grupos (1º al 4º)");
     const dynamicStandingsData = calculateGroupStandings();
     
@@ -2203,95 +2238,9 @@ function openPlayerModal(playerName) {
         const actualVal = actual ? actual + (isProv ? " (Prov.)" : "") : "-";
         addKOItem(standingsCard, label, teamPred, actualVal, pts);
     });
-    koList.appendChild(standingsCard);
+    specialsList.appendChild(standingsCard);
 
-    // Advancing teams lists
-    const r32Card = createKOCard("Equipos clasificados a Dieciseisavos (1/16)");
-    Object.entries(playerPreds.r32_teams || {}).forEach(([key, teamPred]) => {
-        const qualified = results.r32_teams || [];
-        const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 0.5 : 0.0;
-        addKOItem(r32Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
-    });
-    koList.appendChild(r32Card);
-
-    const r16Card = createKOCard("Equipos clasificados a Octavos (1/8)");
-    Object.entries(playerPreds.r16_teams || {}).forEach(([key, teamPred]) => {
-        const qualified = results.r16_teams || [];
-        const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 0.5 : 0.0;
-        addKOItem(r16Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
-    });
-    koList.appendChild(r16Card);
-
-    const r8Card = createKOCard("Equipos clasificados a Cuartos (1/4)");
-    Object.entries(playerPreds.r8_teams || {}).forEach(([key, teamPred]) => {
-        const qualified = results.r8_teams || [];
-        const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 0.5 : 0.0;
-        addKOItem(r8Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
-    });
-    koList.appendChild(r8Card);
-
-    const r4Card = createKOCard("Equipos clasificados a Semifinales (1/2)");
-    Object.entries(playerPreds.r4_teams || {}).forEach(([key, teamPred]) => {
-        const qualified = results.r4_teams || [];
-        const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 0.5 : 0.0;
-        addKOItem(r4Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
-    });
-    koList.appendChild(r4Card);
-
-    const finalCard = createKOCard("Equipos Finalistas");
-    Object.entries(playerPreds.final_teams || {}).forEach(([key, teamPred]) => {
-        const qualified = results.final_teams || [];
-        const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 1.0 : 0.0;
-        addKOItem(finalCard, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
-    });
-    koList.appendChild(finalCard);
-
-    const r3_4Card = createKOCard("Equipos en 3er/4to puesto");
-    Object.entries(playerPreds.r3_4_teams || {}).forEach(([key, teamPred]) => {
-        const qualified = results.r3_4_teams || [];
-        const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 0.5 : 0.0;
-        addKOItem(r3_4Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
-    });
-    koList.appendChild(r3_4Card);
-
-    // K.O. Bracket Matchups and Scores
-    const bracketsCard = createKOCard("Enfrentamientos directos (K.O.)");
-    
-    // Dieciseisavos
-    Object.entries(playerPreds.r32_matches || {}).forEach(([key, predVal]) => {
-        evaluateKOBracketMatch(bracketsCard, "Dieciseisavos", key, predVal, results.r32_matches);
-    });
-    // Octavos
-    Object.entries(playerPreds.r16_matches || {}).forEach(([key, predVal]) => {
-        evaluateKOBracketMatch(bracketsCard, "Octavos", key, predVal, results.r16_matches);
-    });
-    // Cuartos
-    Object.entries(playerPreds.r8_matches || {}).forEach(([key, predVal]) => {
-        evaluateKOBracketMatch(bracketsCard, "Cuartos", key, predVal, results.r8_matches);
-    });
-    // Semifinales
-    Object.entries(playerPreds.r4_matches || {}).forEach(([key, predVal]) => {
-        evaluateKOBracketMatch(bracketsCard, "Semifinales", key, predVal, results.r4_matches);
-    });
-
-    // Partido 3º y 4º puesto
-    if (playerPreds.r3_4_match) {
-        evaluateSingleKOMatch(bracketsCard, "Tercer y Cuarto Puesto", playerPreds.r3_4_match, results.r3_4_match);
-    }
-    // Final
-    if (playerPreds.final_match) {
-        evaluateSingleKOMatch(bracketsCard, "Gran Final", playerPreds.final_match, results.final_match);
-    }
-
-    koList.appendChild(bracketsCard);
-
-    // Cuadro de honor
+    // Cuadro de honor (Campeón, Subcampeón, MVP, etc.)
     const honorCard = createKOCard("Cuadro de Honor y Premios Especiales");
     const mappings = {
         'Campeón': { key: 'honor_champ', label: 'Campeón Mundial', pts: 5.0 },
@@ -2320,7 +2269,113 @@ function openPlayerModal(playerName) {
             addKOItem(honorCard, matched.label, teamPred, actual, pts);
         }
     });
-    koList.appendChild(honorCard);
+    specialsList.appendChild(honorCard);
+
+    // --- Tab 2: Dieciseisavos ---
+    
+    // Qualified teams R32 Card
+    const r32Card = createKOCard("Equipos clasificados a Dieciseisavos (1/16)");
+    Object.entries(playerPreds.r32_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.r32_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 0.5 : 0.0;
+        addKOItem(r32Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    r32List.appendChild(r32Card);
+
+    // R32 Matches Table
+    const r32MatchesCard = createKOTableCard("Partidos - Dieciseisavos (1/16)", ["Nº", "Predicción", "Real", "Puntos"]);
+    Object.entries(playerPreds.r32_matches || {}).forEach(([key, predVal]) => {
+        evaluateKOBracketMatch(r32MatchesCard, "Dieciseisavos", key, predVal, results.r32_matches);
+    });
+    r32List.appendChild(r32MatchesCard);
+
+    // --- Tab 3: Octavos ---
+    
+    // Qualified teams R16 Card
+    const r16Card = createKOCard("Equipos clasificados a Octavos (1/8)");
+    Object.entries(playerPreds.r16_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.r16_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 0.5 : 0.0;
+        addKOItem(r16Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    r16List.appendChild(r16Card);
+
+    // R16 Matches Table
+    const r16MatchesCard = createKOTableCard("Partidos - Octavos (1/8)", ["Nº", "Predicción", "Real", "Puntos"]);
+    Object.entries(playerPreds.r16_matches || {}).forEach(([key, predVal]) => {
+        evaluateKOBracketMatch(r16MatchesCard, "Octavos", key, predVal, results.r16_matches);
+    });
+    r16List.appendChild(r16MatchesCard);
+
+    // --- Tab 4: Cuartos ---
+    
+    // Qualified teams R8 Card
+    const r8Card = createKOCard("Equipos clasificados a Cuartos (1/4)");
+    Object.entries(playerPreds.r8_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.r8_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 0.5 : 0.0;
+        addKOItem(r8Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    r8List.appendChild(r8Card);
+
+    // R8 Matches Table
+    const r8MatchesCard = createKOTableCard("Partidos - Cuartos (1/4)", ["Nº", "Predicción", "Real", "Puntos"]);
+    Object.entries(playerPreds.r8_matches || {}).forEach(([key, predVal]) => {
+        evaluateKOBracketMatch(r8MatchesCard, "Cuartos", key, predVal, results.r8_matches);
+    });
+    r8List.appendChild(r8MatchesCard);
+
+    // --- Tab 5: Semifinales / Finales ---
+    
+    // Qualified teams Semifinals (1/2) Card
+    const r4Card = createKOCard("Equipos clasificados a Semifinales (1/2)");
+    Object.entries(playerPreds.r4_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.r4_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 0.5 : 0.0;
+        addKOItem(r4Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    finalSemisList.appendChild(r4Card);
+
+    // Qualified Finalists Card
+    const finalCard = createKOCard("Equipos Finalistas");
+    Object.entries(playerPreds.final_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.final_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 1.0 : 0.0;
+        addKOItem(finalCard, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    finalSemisList.appendChild(finalCard);
+
+    // Qualified 3rd/4th place Card
+    const r3_4Card = createKOCard("Equipos en 3er/4to puesto");
+    Object.entries(playerPreds.r3_4_teams || {}).forEach(([key, teamPred]) => {
+        const qualified = results.r3_4_teams || [];
+        const isCorrect = qualified.includes(teamPred);
+        const pts = isCorrect ? 0.5 : 0.0;
+        addKOItem(r3_4Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
+    });
+    finalSemisList.appendChild(r3_4Card);
+
+    // Semifinals Matches Table
+    const r4MatchesCard = createKOTableCard("Partidos - Semifinales (1/2)", ["Nº", "Predicción", "Real", "Puntos"]);
+    Object.entries(playerPreds.r4_matches || {}).forEach(([key, predVal]) => {
+        evaluateKOBracketMatch(r4MatchesCard, "Semifinales", key, predVal, results.r4_matches);
+    });
+    finalSemisList.appendChild(r4MatchesCard);
+    
+    // Finals Matches Table
+    const finalMatchesCard = createKOTableCard("Partidos - Finales", ["Fase", "Predicción", "Real", "Puntos"]);
+    if (playerPreds.r3_4_match) {
+        evaluateSingleKOMatch(finalMatchesCard, "3º y 4º Puesto", playerPreds.r3_4_match, results.r3_4_match);
+    }
+    if (playerPreds.final_match) {
+        evaluateSingleKOMatch(finalMatchesCard, "Gran Final", playerPreds.final_match, results.final_match);
+    }
+    finalSemisList.appendChild(finalMatchesCard);
 
     // Open modal
     document.getElementById('player-modal').classList.add('open');
@@ -2338,7 +2393,6 @@ function addKOItem(card, label, pred, actual, pts) {
     const container = card.querySelector('.ko-items-container');
     const div = document.createElement('div');
     div.classList.add('ko-pred-item');
-    div.style.marginBottom = '0.5rem';
     
     let ptsLabel = '';
     if (pts > 0) {
@@ -2409,42 +2463,50 @@ function evaluateKOBracketMatch(card, stageLabel, matchKey, predVal, actualMatch
     }
 
     const provLabel = isProvisionalMatchup ? ' <span style="color:var(--color-success); font-weight:700;" title="Cruces provisionales">*</span>' : '';
-    const displayMatchupHtml = actualMatchup ? getMatchupFlagsHtml(actualMatchup) + provLabel : 'Pendiente';
-
-    const container = card.querySelector('.ko-items-container');
-    const div = document.createElement('div');
-    div.classList.add('ko-pred-item');
-    div.style.marginBottom = '0.5rem';
     
+    let displayMatchupHtml = '';
+    if (actualMatchup) {
+        displayMatchupHtml = formatMatchupHtml(actualMatchup) + provLabel;
+        if (actualScore) {
+            displayMatchupHtml += ` <strong>(${actualScore})</strong>`;
+        }
+    } else {
+        displayMatchupHtml = '<span class="text-muted">Pendiente</span>';
+    }
+
     let ptsLabel = '';
+    let badgeClass = 'badge-miss';
     if (pts > 0) {
-        ptsLabel = `<span class="ko-points-won" style="color:var(--color-success); font-weight:700;">+${pts.toFixed(1)} pts</span>`;
+        badgeClass = pts === 2.0 ? 'badge-exact' : (pts === 1.0 ? 'badge-diff' : 'badge-sign');
+        ptsLabel = `<span class="prediction-badge ${badgeClass}">+${pts.toFixed(1)} pts</span>`;
     } else {
         if (!actualMatchup || actualMatchup.trim() === "") {
-            ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted); font-size:0.8rem;" title="El cruce real aún está pendiente de decidir">0.0 pts (Pendiente)</span>`;
+            ptsLabel = `<span class="prediction-badge badge-miss" title="El cruce real aún está pendiente de decidir">Pendiente</span>`;
         } else if (!isMatchupCorrect) {
-            ptsLabel = `<span class="ko-points-won" style="color:#ef4444; font-size:0.8rem; font-weight:600;" title="No puntúa por no haber acertado el enfrentamiento exacto">0.0 pts (Cruce incorrecto)</span>`;
+            ptsLabel = `<span class="prediction-badge badge-miss" style="background:rgba(239, 68, 68, 0.12); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);" title="No puntúa por no haber acertado el enfrentamiento exacto">Cruce inc. (0.0)</span>`;
         } else if (!actualScore || actualScore.trim() === "") {
-            ptsLabel = `<span class="ko-points-won" style="color:var(--color-accent); font-size:0.8rem; font-weight:600;" title="Enfrentamiento acertado. Esperando a que se juegue el partido">0.0 pts (Cruce acertado)</span>`;
+            ptsLabel = `<span class="prediction-badge badge-miss" style="background:rgba(59, 130, 246, 0.12); color:#3b82f6; border:1px solid rgba(59, 130, 246, 0.2);" title="Enfrentamiento acertado. Esperando a que se juegue el partido">Cruce ok (0.0)</span>`;
         } else {
-            ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted); font-size:0.8rem;" title="Fallo en la predicción del resultado (1X2/marcador/diferencia) sobre un cruce acertado">0.0 pts (Fallo)</span>`;
+            ptsLabel = `<span class="prediction-badge badge-miss" title="Fallo en la predicción del resultado (1X2/marcador/diferencia) sobre un cruce acertado">Fallo (0.0)</span>`;
         }
     }
 
     const matchNum = Object.keys(MATCH_KEYS_BY_NUMBER).find(n => MATCH_KEYS_BY_NUMBER[n] === matchKey);
     const labelText = matchNum ? `#${matchNum}` : matchKey;
 
-    div.innerHTML = `
-        <div class="ko-pred-label">
-            <strong title="Cruce original: ${matchKey}">${stageLabel} - ${labelText}</strong><br>
-            <span style="font-size:0.8rem; color:#fff">Predicción: ${getMatchupFlagsHtml(predMatchup)} (${predScore})</span>
-        </div>
-        <div class="ko-pred-val">
-            <span style="font-size:0.8rem; color:var(--text-muted)">Real: ${displayMatchupHtml} ${actualScore ? '('+actualScore+')' : ''}</span>
-            ${ptsLabel}
-        </div>
-    `;
-    container.appendChild(div);
+    const tbody = card.querySelector('tbody');
+    if (tbody) {
+        const tr = document.createElement('tr');
+        tr.classList.add('prediction-row');
+        
+        tr.innerHTML = `
+            <td class="text-center"><small class="text-muted" title="Cruce original: ${matchKey}">${labelText}</small></td>
+            <td>${formatMatchupHtml(predMatchup)} <strong>(${predScore})</strong></td>
+            <td>${displayMatchupHtml}</td>
+            <td class="text-center">${ptsLabel}</td>
+        `;
+        tbody.appendChild(tr);
+    }
 }
 
 function evaluateSingleKOMatch(card, label, predVal, actualMatchObj) {
@@ -2479,43 +2541,277 @@ function evaluateSingleKOMatch(card, label, predVal, actualMatchObj) {
     }
 
     const provLabel = isProvisionalMatchup ? ' <span style="color:var(--color-success); font-weight:700;" title="Cruces provisionales">*</span>' : '';
-    const displayMatchupHtml = actualMatchup ? getMatchupFlagsHtml(actualMatchup) + provLabel : 'Pendiente';
-
-    const container = card.querySelector('.ko-items-container');
-    const div = document.createElement('div');
-    div.classList.add('ko-pred-item');
-    div.style.marginBottom = '0.5rem';
     
+    let displayMatchupHtml = '';
+    if (actualMatchup) {
+        displayMatchupHtml = formatMatchupHtml(actualMatchup) + provLabel;
+        if (actualScore) {
+            displayMatchupHtml += ` <strong>(${actualScore})</strong>`;
+        }
+    } else {
+        displayMatchupHtml = '<span class="text-muted">Pendiente</span>';
+    }
+
     let ptsLabel = '';
+    let badgeClass = 'badge-miss';
     if (pts > 0) {
-        ptsLabel = `<span class="ko-points-won" style="color:var(--color-success); font-weight:700;">+${pts.toFixed(1)} pts</span>`;
+        badgeClass = pts === 2.0 ? 'badge-exact' : (pts === 1.0 ? 'badge-diff' : 'badge-sign');
+        ptsLabel = `<span class="prediction-badge ${badgeClass}">+${pts.toFixed(1)} pts</span>`;
     } else {
         if (!actualMatchup || actualMatchup.trim() === "") {
-            ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted); font-size:0.8rem;" title="El cruce real aún está pendiente de decidir">0.0 pts (Pendiente)</span>`;
+            ptsLabel = `<span class="prediction-badge badge-miss" title="El cruce real aún está pendiente de decidir">Pendiente</span>`;
         } else if (!isMatchupCorrect) {
-            ptsLabel = `<span class="ko-points-won" style="color:#ef4444; font-size:0.8rem; font-weight:600;" title="No puntúa por no haber acertado el enfrentamiento exacto">0.0 pts (Cruce incorrecto)</span>`;
+            ptsLabel = `<span class="prediction-badge badge-miss" style="background:rgba(239, 68, 68, 0.12); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);" title="No puntúa por no haber acertado el enfrentamiento exacto">Cruce inc. (0.0)</span>`;
         } else if (!actualScore || actualScore.trim() === "") {
-            ptsLabel = `<span class="ko-points-won" style="color:var(--color-accent); font-size:0.8rem; font-weight:600;" title="Enfrentamiento acertado. Esperando a que se juegue el partido">0.0 pts (Cruce acertado)</span>`;
+            ptsLabel = `<span class="prediction-badge badge-miss" style="background:rgba(59, 130, 246, 0.12); color:#3b82f6; border:1px solid rgba(59, 130, 246, 0.2);" title="Enfrentamiento acertado. Esperando a que se juegue el partido">Cruce ok (0.0)</span>`;
         } else {
-            ptsLabel = `<span class="ko-points-won" style="color:var(--text-muted); font-size:0.8rem;" title="Fallo en la predicción del resultado (1X2/marcador/diferencia) sobre un cruce acertado">0.0 pts (Fallo)</span>`;
+            ptsLabel = `<span class="prediction-badge badge-miss" title="Fallo en la predicción del resultado (1X2/marcador/diferencia) sobre un cruce acertado">Fallo (0.0)</span>`;
         }
     }
 
-    div.innerHTML = `
-        <div class="ko-pred-label">
-            <strong>${label}</strong><br>
-            <span style="font-size:0.8rem; color:#fff">Predicción: ${getMatchupFlagsHtml(predMatchup)} (${predScore})</span>
-        </div>
-        <div class="ko-pred-val">
-            <span style="font-size:0.8rem; color:var(--text-muted)">Real: ${displayMatchupHtml} ${actualScore ? '('+actualScore+')' : ''}</span>
-            ${ptsLabel}
-        </div>
-    `;
-    container.appendChild(div);
+    const tbody = card.querySelector('tbody');
+    if (tbody) {
+        const tr = document.createElement('tr');
+        tr.classList.add('prediction-row');
+        
+        tr.innerHTML = `
+            <td class="text-center"><small class="text-muted">${label}</small></td>
+            <td>${formatMatchupHtml(predMatchup)} <strong>(${predScore})</strong></td>
+            <td>${displayMatchupHtml}</td>
+            <td class="text-center">${ptsLabel}</td>
+        `;
+        tbody.appendChild(tr);
+    }
+}
+
+function createKOTableCard(title, headers = ["Cruce", "Predicción", "Real", "Puntos"]) {
+    const card = document.createElement('div');
+    card.classList.add('card');
+    card.style.gridColumn = '1 / -1'; // Spans full width in CSS grid
+    card.style.marginBottom = '1.5rem';
+    
+    const cardHeader = document.createElement('div');
+    cardHeader.classList.add('card-header');
+    cardHeader.style.paddingBottom = '0.5rem';
+    cardHeader.style.borderBottom = '1px solid var(--border-color)';
+    cardHeader.innerHTML = `<h4 style="font-family:var(--font-heading); color:var(--color-accent); font-size:1.15rem; font-weight:700; margin:0;"><i class="fa-solid fa-circle-nodes"></i> ${title}</h4>`;
+    card.appendChild(cardHeader);
+    
+    const tableResp = document.createElement('div');
+    tableResp.classList.add('table-responsive');
+    tableResp.style.marginTop = '0.5rem';
+    
+    const table = document.createElement('table');
+    table.classList.add('table', 'table-compact');
+    
+    const thead = document.createElement('thead');
+    const tr = document.createElement('tr');
+    headers.forEach(h => {
+        const th = document.createElement('th');
+        if (h === "Puntos" || h === "Cruce" || h === "Nº" || h === "Fase") {
+            th.classList.add('text-center');
+        }
+        th.innerText = h;
+        tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+    table.appendChild(thead);
+    
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    tableResp.appendChild(table);
+    card.appendChild(tableResp);
+    
+    return card;
+}
+
+function formatMatchupHtml(matchupStr) {
+    if (!matchupStr || !matchupStr.includes('-')) {
+        return `<span class="text-muted">${matchupStr || '-'}</span>`;
+    }
+    const teams = matchupStr.split('-');
+    if (teams.length !== 2) return matchupStr;
+    const t1 = teams[0].trim();
+    const t2 = teams[1].trim();
+    const flag1 = getFlagHtml(t1, false);
+    const flag2 = getFlagHtml(t2, false);
+    const abbr1 = getCountryAbbreviation(t1);
+    const abbr2 = getCountryAbbreviation(t2);
+    return `<span style="white-space: nowrap;">${flag1} <span class="modal-team-name" title="${t1}">${abbr1}</span> - <span class="modal-team-name" title="${t2}">${abbr2}</span> ${flag2}</span>`;
+}
+
+function formatMatchupFlagsOnlyHtml(matchupStr) {
+    if (!matchupStr || !matchupStr.includes('-')) {
+        return `<span class="text-muted">${matchupStr || '-'}</span>`;
+    }
+    const teams = matchupStr.split('-');
+    if (teams.length !== 2) return matchupStr;
+    const t1 = teams[0].trim();
+    const t2 = teams[1].trim();
+    const flag1 = getFlagHtml(t1, false);
+    const flag2 = getFlagHtml(t2, false);
+    return `<span style="white-space: nowrap;" title="${t1} vs ${t2}">${flag1} - ${flag2}</span>`;
 }
 
 function closePlayerModal() {
     document.getElementById('player-modal').classList.remove('open');
+}
+
+function openMatchPredictionsModal(r, matchKey) {
+    let matchObj = null;
+    if (r.prefix === 'single') {
+        matchObj = (results && results[matchKey]) || { matchup: '', score: '' };
+    } else {
+        matchObj = (results && results[r.prefix] && results[r.prefix][matchKey]) || { matchup: '', score: '' };
+    }
+
+    const matchup = matchObj.matchup || '';
+    const score = matchObj.score || '';
+    const isPlayed = score.trim() !== "";
+
+    let t1 = "Por determinar";
+    let t2 = "Por determinar";
+    if (matchup.includes('-')) {
+        const parts = matchup.split('-');
+        t1 = parts[0].trim() || "Por determinar";
+        t2 = parts[1].trim() || "Por determinar";
+    } else if (matchup.trim() !== "") {
+        t1 = matchup.trim();
+    }
+
+    const matchNum = Object.keys(MATCH_KEYS_BY_NUMBER).find(n => MATCH_KEYS_BY_NUMBER[n] === matchKey);
+    let roundName = "";
+    if (r.key === 'r32') roundName = "Dieciseisavos (1/16)";
+    else if (r.key === 'r16') roundName = "Octavos (1/8)";
+    else if (r.key === 'r8') roundName = "Cuartos (1/4)";
+    else if (r.key === 'r4') roundName = "Semifinal (1/2)";
+    else if (matchKey === 'r3_4_match') roundName = "3º y 4º Puesto";
+    else if (matchKey === 'final_match') roundName = "Gran Final";
+
+    const matchTitle = matchNum ? `${roundName} - Partido #${matchNum}` : roundName;
+
+    // Set title
+    document.getElementById('modal-match-title').innerText = matchTitle;
+
+    // Set match details (Teams, scores, date)
+    const matchDateStr = koMatchDates[matchKey] || '';
+    const flagHomeHtml = getFlagHtml(t1, true); // Larger flags for modal header
+    const flagAwayHtml = getFlagHtml(t2, true);
+    
+    let scoreDisplayHtml = '<span style="font-size: 1.5rem; color: var(--text-muted); font-weight: 700; margin: 0 1.5rem;">VS</span>';
+    if (isPlayed) {
+        const parts = score.split('-');
+        scoreDisplayHtml = `<span style="font-size: 2.2rem; font-weight: 800; color: var(--color-success); margin: 0 1rem;">${parts[0]}</span><span style="font-size: 1.5rem; color: var(--text-muted);">-</span><span style="font-size: 2.2rem; font-weight: 800; color: var(--color-success); margin: 0 1rem;">${parts[1]}</span>`;
+    }
+
+    document.getElementById('modal-match-details').innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; margin-bottom: 0.5rem;">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 110px;">
+                ${flagHomeHtml}
+                <strong style="font-size: 0.95rem; margin-top: 0.5rem; text-align: center; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t1}</strong>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: center; min-width: 60px;">
+                ${scoreDisplayHtml}
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; width: 110px;">
+                ${flagAwayHtml}
+                <strong style="font-size: 0.95rem; margin-top: 0.5rem; text-align: center; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t2}</strong>
+            </div>
+        </div>
+        <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.8rem;"><i class="fa-regular fa-clock"></i> ${matchDateStr}</div>
+    `;
+
+    // Populate predictions table
+    const tbody = document.getElementById('modal-match-preds-body');
+    tbody.innerHTML = '';
+
+    porraData.players.forEach(p => {
+        const playerPreds = porraData.predictions[p] || {};
+        let pred = '';
+        if (r.prefix === 'single') {
+            pred = playerPreds[matchKey] || '';
+        } else {
+            pred = (playerPreds[r.prefix] && playerPreds[r.prefix][matchKey]) || '';
+        }
+
+        let predDisplay = '-';
+        let badgeText = "Fallo";
+        let badgeClass = "badge-miss";
+        let pointsText = "0.0 pts";
+        let isMatchupCorrect = false;
+
+        if (pred && pred.includes('·')) {
+            const parts = pred.split('·');
+            const predMatchup = parts[0];
+            const predScore = parts[1];
+
+            predDisplay = `${formatMatchupFlagsOnlyHtml(predMatchup)} <strong>(${predScore})</strong>`;
+
+            if (isPlayed) {
+                isMatchupCorrect = matchup && matchup.toLowerCase() === predMatchup.toLowerCase();
+                if (isMatchupCorrect) {
+                    const outcome = calcOutcomePoints(score, predScore);
+                    const pts = outcome.points / 2.0; // Net points in KO
+                    if (pts > 0) {
+                        badgeText = pts === 2.0 ? "Exacto" : (pts === 1.0 ? "Dif. Goles" : "Signo 1X2");
+                        badgeClass = pts === 2.0 ? "badge-exact" : (pts === 1.0 ? "badge-diff" : "badge-sign");
+                        pointsText = `+${pts.toFixed(1)} pts`;
+                    } else {
+                        badgeText = "Fallo";
+                        badgeClass = "badge-miss";
+                        pointsText = "0.0 pts";
+                    }
+                } else {
+                    badgeText = "Cruce inc.";
+                    badgeClass = "badge-miss";
+                    pointsText = "0.0 pts";
+                }
+            }
+        }
+
+        let tooltip = '';
+        if (isPlayed) {
+            if (!isMatchupCorrect) {
+                tooltip = 'Fallo por cruce incorrecto (0.0 puntos)';
+            } else if (badgeClass === 'badge-exact') {
+                tooltip = 'Resultado exacto (+2.0 puntos netos)';
+            } else if (badgeClass === 'badge-diff') {
+                tooltip = 'Diferencia de goles (+1.0 punto neto)';
+            } else if (badgeClass === 'badge-sign') {
+                tooltip = 'Signo 1X2 (+0.5 puntos netos)';
+            } else {
+                tooltip = 'Fallo en resultado (0.0 puntos)';
+            }
+        } else {
+            tooltip = 'Partido pendiente de jugar';
+        }
+
+        const badgeHtml = isPlayed ? 
+            `<span class="prediction-badge ${badgeClass}" title="${tooltip}">${badgeText}</span>` : 
+            `<span class="prediction-badge badge-miss" title="${tooltip}" style="background:rgba(255,255,255,0.03); color:var(--text-muted); border:1px solid rgba(255,255,255,0.08);">Pendiente</span>`;
+        
+        const ptsColor = (badgeClass === 'badge-exact' || badgeClass === 'badge-diff' || badgeClass === 'badge-sign') ? 'var(--color-success)' : 'var(--text-muted)';
+        const pointsDisplay = isPlayed ? `<span class="pred-player-pts" style="color: ${ptsColor}; font-weight: 700;">${pointsText}</span>` : `<span class="pred-player-pts" style="color: var(--text-muted); font-size: 0.8rem;">0.0 pts</span>`;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="font-weight: 600; color: #fff; vertical-align: middle;">${p}</td>
+            <td class="text-center" style="vertical-align: middle; white-space: nowrap;">${predDisplay}</td>
+            <td class="text-center" style="vertical-align: middle; white-space: nowrap;">
+                <div style="display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                    ${badgeHtml}
+                    ${pointsDisplay}
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    document.getElementById('match-predictions-modal').classList.add('open');
+}
+
+function closeMatchPredictionsModal() {
+    document.getElementById('match-predictions-modal').classList.remove('open');
 }
 
 

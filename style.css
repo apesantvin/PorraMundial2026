@@ -1076,7 +1076,19 @@ body {
     display: flex;
     border-bottom: 1px solid var(--border-color);
     margin-bottom: 1.25rem;
-    gap: 1rem;
+    gap: 1.25rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+}
+
+.tabs-sub::-webkit-scrollbar {
+    height: 4px;
+}
+
+.tabs-sub::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
 }
 
 .tab-sub-btn {
@@ -1157,6 +1169,17 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 1rem;
+}
+
+.modal-tab-content .ko-predictions-list {
+    grid-template-columns: 1fr; /* Force cards to span full width in modal tabs */
+}
+
+.ko-items-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.5rem;
 }
 
 .ko-pred-item {
@@ -1873,6 +1896,7 @@ span.placeholder-flag i {
     height: 84px; /* Fixed height for exact vertical alignments */
     box-sizing: border-box;
     z-index: 2; /* Keep cards above connection lines */
+    cursor: pointer;
 }
 .ko-bracket-match:hover {
     transform: translateY(-2px);
@@ -1956,7 +1980,7 @@ span.placeholder-flag i {
     content: "";
     position: absolute;
     right: -2rem; /* Half of gap (4rem / 2) */
-    top: 50%;
+    top: 42px; /* Fixed vertical center of 84px card */
     width: 2rem;
     height: 2px;
     background: var(--border-color);
@@ -1968,11 +1992,29 @@ span.placeholder-flag i {
     content: "";
     position: absolute;
     left: -2rem;
-    top: 50%;
+    top: 42px; /* Fixed vertical center of 84px card */
     width: 2rem;
     height: 2px;
     background: var(--border-color);
     z-index: 1;
+}
+
+/* Expanded state for bracket match cards */
+.ko-bracket-match.expanded {
+    height: auto;
+    border-color: rgba(6, 182, 212, 0.35);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+    background: rgba(30, 41, 59, 0.95);
+    transform: none;
+    cursor: default;
+}
+
+.ko-bracket-match.expanded .match-predictions-drawer {
+    max-height: 800px;
+    opacity: 1;
+    margin-top: 1rem;
+    padding-top: 0.8rem;
+    border-top: 1px dashed rgba(255, 255, 255, 0.08);
 }
 
 /* Vertical line connecting pairs */
