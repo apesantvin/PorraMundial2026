@@ -44,6 +44,10 @@ body {
     flex-direction: column;
 }
 
+body.modal-open {
+    overflow: hidden;
+}
+
 /* Header & Navigation */
 .app-header {
     background: rgba(15, 23, 42, 0.6);

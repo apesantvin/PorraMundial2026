@@ -2078,6 +2078,7 @@ function setupEventListeners() {
 
 // Modal management
 function openPlayerModal(playerName) {
+    document.body.classList.add('modal-open');
     const standings = calculateStandings();
     const player = standings.find(p => p.name === playerName);
     if (!player) return;
@@ -2655,6 +2656,7 @@ function formatMatchupFlagsOnlyHtml(matchupStr) {
 
 function closePlayerModal() {
     document.getElementById('player-modal').classList.remove('open');
+    document.body.classList.remove('modal-open');
 }
 
 function openMatchPredictionsModal(r, matchKey) {
@@ -2695,30 +2697,52 @@ function openMatchPredictionsModal(r, matchKey) {
 
     // Set match details (Teams, scores, date)
     const matchDateStr = koMatchDates[matchKey] || '';
-    const flagHomeHtml = getFlagHtml(t1, true); // Larger flags for modal header
-    const flagAwayHtml = getFlagHtml(t2, true);
-    
-    let scoreDisplayHtml = '<span style="font-size: 1.5rem; color: var(--text-muted); font-weight: 700; margin: 0 1.5rem;">VS</span>';
+    const flagHomeHtml = getFlagHtml(t1, false);
+    const flagAwayHtml = getFlagHtml(t2, false);
+
+    let homeScore = '-';
+    let awayScore = '-';
     if (isPlayed) {
         const parts = score.split('-');
-        scoreDisplayHtml = `<span style="font-size: 2.2rem; font-weight: 800; color: var(--color-success); margin: 0 1rem;">${parts[0]}</span><span style="font-size: 1.5rem; color: var(--text-muted);">-</span><span style="font-size: 2.2rem; font-weight: 800; color: var(--color-success); margin: 0 1rem;">${parts[1]}</span>`;
+        homeScore = parts[0] || '-';
+        awayScore = parts[1] || '-';
     }
 
     document.getElementById('modal-match-details').innerHTML = `
-        <div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; margin-bottom: 0.5rem;">
-            <div style="display: flex; flex-direction: column; align-items: center; width: 110px;">
-                ${flagHomeHtml}
-                <strong style="font-size: 0.95rem; margin-top: 0.5rem; text-align: center; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t1}</strong>
+        <!-- Line 1: Schedule -->
+        <div style="color: var(--text-muted); font-size: 0.82rem; margin-top: 0.5rem; margin-bottom: 0.8rem; text-align: center;">
+            <i class="fa-regular fa-clock"></i> ${matchDateStr}
+        </div>
+        
+        <!-- Line 2 & 3: Matchup and Scores -->
+        <div style="display: flex; align-items: center; justify-content: center; gap: 1.25rem;">
+            <!-- Home Team info & Score aligned underneath -->
+            <div style="display: flex; flex-direction: column; align-items: center; width: 140px;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
+                    ${flagHomeHtml}
+                    <strong style="font-size: 1rem; max-width: 100px; overflow: hidden; text-overflow: ellipsis;" title="${t1}">${t1}</strong>
+                </div>
+                <div style="font-size: 1.8rem; font-weight: 800; color: var(--color-success); margin-top: 0.25rem;">
+                    ${homeScore}
+                </div>
             </div>
-            <div style="display: flex; align-items: center; justify-content: center; min-width: 60px;">
-                ${scoreDisplayHtml}
+
+            <!-- VS Middle Separator -->
+            <div style="font-size: 1rem; color: var(--text-muted); font-weight: 700; height: 100%; display: flex; align-items: center; padding-bottom: 1.8rem;">
+                VS
             </div>
-            <div style="display: flex; flex-direction: column; align-items: center; width: 110px;">
-                ${flagAwayHtml}
-                <strong style="font-size: 0.95rem; margin-top: 0.5rem; text-align: center; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t2}</strong>
+
+            <!-- Away Team info & Score aligned underneath -->
+            <div style="display: flex; flex-direction: column; align-items: center; width: 140px;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
+                    <strong style="font-size: 1rem; max-width: 100px; overflow: hidden; text-overflow: ellipsis;" title="${t2}">${t2}</strong>
+                    ${flagAwayHtml}
+                </div>
+                <div style="font-size: 1.8rem; font-weight: 800; color: var(--color-success); margin-top: 0.25rem;">
+                    ${awayScore}
+                </div>
             </div>
         </div>
-        <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.8rem;"><i class="fa-regular fa-clock"></i> ${matchDateStr}</div>
     `;
 
     // Populate predictions table
@@ -2808,10 +2832,12 @@ function openMatchPredictionsModal(r, matchKey) {
     });
 
     document.getElementById('match-predictions-modal').classList.add('open');
+    document.body.classList.add('modal-open');
 }
 
 function closeMatchPredictionsModal() {
     document.getElementById('match-predictions-modal').classList.remove('open');
+    document.body.classList.remove('modal-open');
 }
 
 
