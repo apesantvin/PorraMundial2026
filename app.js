@@ -1179,7 +1179,8 @@ function calcOutcomePoints(actualScoreStr, predStr) {
     const predScore = parts[1].trim();
 
     const predScoreParts = predScore.split('-');
-    const actualScoreParts = actualScoreStr.split('-');
+    const actualMainPart = actualScoreStr.split(' ')[0];
+    const actualScoreParts = actualMainPart.split('-');
     
     if (predScoreParts.length !== 2 || actualScoreParts.length !== 2) {
         return { points: 0.0, class: 'miss', details: ['Formato incorrecto'] };
@@ -1788,9 +1789,18 @@ function renderKORounds() {
         let homeScore = '';
         let awayScore = '';
         if (isPlayed) {
-            const parts = score.split('-');
+            const mainPart = score.split(' ')[0];
+            const parts = mainPart.split('-');
             homeScore = parts[0] || '';
             awayScore = parts[1] || '';
+            
+            const matchPenalties = score.match(/\((\d+)-(\d+)\)/);
+            if (matchPenalties && matchPenalties.length === 3) {
+                const penH = matchPenalties[1];
+                const penA = matchPenalties[2];
+                homeScore += ` <span class="penalty-score" style="font-size:0.72rem; color:var(--text-muted); font-weight:normal;">(${penH})</span>`;
+                awayScore += ` <span class="penalty-score" style="font-size:0.72rem; color:var(--text-muted); font-weight:normal;">(${penA})</span>`;
+            }
         }
 
         // Use small flags (isLarge = false)
@@ -2703,9 +2713,18 @@ function openMatchPredictionsModal(r, matchKey) {
     let homeScore = '-';
     let awayScore = '-';
     if (isPlayed) {
-        const parts = score.split('-');
+        const mainPart = score.split(' ')[0];
+        const parts = mainPart.split('-');
         homeScore = parts[0] || '-';
         awayScore = parts[1] || '-';
+        
+        const matchPenalties = score.match(/\((\d+)-(\d+)\)/);
+        if (matchPenalties && matchPenalties.length === 3) {
+            const penH = matchPenalties[1];
+            const penA = matchPenalties[2];
+            homeScore += ` <span class="penalty-score" style="font-size:1.1rem; color:var(--text-muted); font-weight:normal;">(${penH})</span>`;
+            awayScore += ` <span class="penalty-score" style="font-size:1.1rem; color:var(--text-muted); font-weight:normal;">(${penA})</span>`;
+        }
     }
 
     document.getElementById('modal-match-details').innerHTML = `
@@ -2982,6 +3001,67 @@ function getMatchupFlagsHtml(matchupStr) {
     return `${getFlagHtml(t1)} ${t1} - ${t2} ${getFlagHtml(t2)}`;
 }
 
+const EN_TO_ES_TEAMS = {
+    'Mexico': 'México',
+    'South Africa': 'Sudáfrica',
+    'South Korea': 'Corea del Sur',
+    'Czech Republic': 'República Checa',
+    'Canada': 'Canadá',
+    'Bosnia & Herzegovina': 'Bosnia y Herzegovina',
+    'Bosnia and Herzegovina': 'Bosnia y Herzegovina',
+    'Qatar': 'Catar',
+    'Switzerland': 'Suiza',
+    'Brazil': 'Brasil',
+    'Morocco': 'Marruecos',
+    'Haiti': 'Haití',
+    'Scotland': 'Escocia',
+    'United States': 'Estados Unidos',
+    'Paraguay': 'Paraguay',
+    'Australia': 'Australia',
+    'Turkey': 'Turquía',
+    'Germany': 'Alemania',
+    'Curaçao': 'Curazao',
+    'Curacao': 'Curazao',
+    'Ivory Coast': 'Costa de Marfil',
+    'Ecuador': 'Ecuador',
+    'Netherlands': 'Países Bajos',
+    'Japan': 'Japón',
+    'Sweden': 'Suecia',
+    'Tunisia': 'Túnez',
+    'Belgium': 'Bélgica',
+    'Egypt': 'Egipto',
+    'Iran': 'Irán',
+    'New Zealand': 'Nueva Zelanda',
+    'Spain': 'España',
+    'Cape Verde': 'Cabo Verde',
+    'Saudi Arabia': 'Arabia Saudita',
+    'Uruguay': 'Uruguay',
+    'France': 'Francia',
+    'Senegal': 'Senegal',
+    'Iraq': 'Irak',
+    'Norway': 'Noruega',
+    'Argentina': 'Argentina',
+    'Algeria': 'Argelia',
+    'Austria': 'Austria',
+    'Jordan': 'Jordania',
+    'Portugal': 'Portugal',
+    'Democratic Republic of the Congo': 'RD Congo',
+    'DR Congo': 'RD Congo',
+    'Uzbekistan': 'Uzbekistán',
+    'Colombia': 'Colombia',
+    'England': 'Inglaterra',
+    'Croatia': 'Croacia',
+    'Ghana': 'Ghana',
+    'Panama': 'Panamá'
+};
+
+function translateENToESTeam(enName) {
+    if (!enName) return "";
+    const clean = enName.trim();
+    if (EN_TO_ES_TEAMS[clean]) return EN_TO_ES_TEAMS[clean];
+    return clean;
+}
+
 // Fetch live World Cup match results dynamically from football-data.org API via CORS proxy
 const TLA_TRANSLATIONS = {
     'NOR': 'Noruega',
@@ -3114,18 +3194,31 @@ async function fetchAndProcessLiveResults() {
         matches.forEach(item => {
             const home = translateTeam(item.homeTeam);
             const away = translateTeam(item.awayTeam);
+            const roundLower = (item.stage || "").toLowerCase();
             
-            const goalsHome = item.score && item.score.fullTime ? item.score.fullTime.home : null;
-            const goalsAway = item.score && item.score.fullTime ? item.score.fullTime.away : null;
+            let goalsHome = item.score && item.score.fullTime ? item.score.fullTime.home : null;
+            let goalsAway = item.score && item.score.fullTime ? item.score.fullTime.away : null;
+            
+            // Subtract penalties from fullTime score (API includes them in fullTime)
+            if (!roundLower.includes('group') && item.score && item.score.penalties && item.score.penalties.home !== null && item.score.penalties.away !== null) {
+                if (goalsHome !== null) goalsHome -= item.score.penalties.home;
+                if (goalsAway !== null) goalsAway -= item.score.penalties.away;
+            }
             
             const status = item.status;
-            const roundLower = (item.stage || "").toLowerCase();
             const matchDate = new Date(item.utcDate).getTime();
 
             const isLive = LIVE_STATUSES.has(status);
             const isFinished = (status === 'FINISHED');
             const isPlayedOrLive = (goalsHome !== null && goalsAway !== null);
-            const scoreStr = isPlayedOrLive ? `${goalsHome}-${goalsAway}` : "";
+            const scoreStr = (() => {
+                if (!isPlayedOrLive) return "";
+                let base = `${goalsHome}-${goalsAway}`;
+                if (!roundLower.includes('group') && item.score && item.score.penalties && item.score.penalties.home !== null && item.score.penalties.away !== null) {
+                    base += ` (${item.score.penalties.home}-${item.score.penalties.away})`;
+                }
+                return base;
+            })();
 
             // Check if the match has finished very recently (within last 4 hours)
             const isRecentFinished = isFinished && ((now - matchDate) <= 4 * 60 * 60 * 1000);
@@ -3317,6 +3410,141 @@ async function fetchAndProcessLiveResults() {
                 }
             }
         });
+
+        // Fill provisional K.O. matchups so team names are resolved for matching
+        fillProvisionalKOMatchups();
+
+        // Cross-reference / fallback with worldcup26.ir API
+        try {
+            const irTargetUrl = `https://worldcup26.ir/get/games?t=${Date.now()}`;
+            const irProxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(irTargetUrl)}`;
+            const irResponse = await fetch(irProxyUrl, { cache: "no-store" });
+            if (irResponse.ok) {
+                const irData = await irResponse.json();
+                if (irData && irData.games && irData.games.length > 0) {
+                    console.log(`Cross-referencing scores with ${irData.games.length} games from worldcup26.ir API...`);
+                    irData.games.forEach(game => {
+                        const isFinished = (game.finished === "TRUE" || game.time_elapsed === "finished");
+                        const isLiveGame = (game.finished === "FALSE" && game.time_elapsed !== "notstarted");
+                        
+                        if (isFinished || isLiveGame) {
+                            const homeES = translateENToESTeam(game.home_team_name_en);
+                            const awayES = translateENToESTeam(game.away_team_name_en);
+                            
+                            const homeScore = game.home_score;
+                            const awayScore = game.away_score;
+                            
+                            if (homeES && awayES && homeScore !== null && awayScore !== null && homeScore !== "" && awayScore !== "") {
+                                let scoreStr = `${homeScore}-${awayScore}`;
+                                
+                                const penH = parseInt(game.home_penalty_score);
+                                const penA = parseInt(game.away_penalty_score);
+                                if (!isNaN(penH) && !isNaN(penA) && (penH > 0 || penA > 0)) {
+                                    scoreStr += ` (${penH}-${penA})`;
+                                }
+
+                                const matchId = String(game.id);
+                                if (parseInt(matchId) >= 1 && parseInt(matchId) <= 72) {
+                                    // Group stage
+                                    if (results.matches[matchId] !== scoreStr && scoreStr !== "") {
+                                        results.matches[matchId] = scoreStr;
+                                        console.log(`[Cross-Reference] Updated Match ${matchId} (${homeES} vs ${awayES}) to ${scoreStr}`);
+                                        changed = true;
+                                        
+                                        if (isLiveGame) {
+                                            provisionalMatches.add(matchId);
+                                        }
+                                    }
+                                } else {
+                                    // Knockout stage: match by teams
+                                    let matchObj = null;
+                                    let matchKey = "";
+                                    let keyPrefix = "";
+
+                                    const stagesToSearch = [
+                                        { prefix: 'r32_matches', list: results.r32_matches },
+                                        { prefix: 'r16_matches', list: results.r16_matches },
+                                        { prefix: 'r8_matches', list: results.r8_matches },
+                                        { prefix: 'r4_matches', list: results.r4_matches },
+                                        { prefix: 'single', list: { "r3_4_match": results.r3_4_match, "final_match": results.final_match } }
+                                    ];
+
+                                    for (const stage of stagesToSearch) {
+                                        for (const [key, m] of Object.entries(stage.list || {})) {
+                                            if (m && m.matchup) {
+                                                const teams = m.matchup.split('-').map(t => t.trim());
+                                                if (teams.length === 2) {
+                                                    if ((teams[0] === homeES && teams[1] === awayES) || (teams[0] === awayES && teams[1] === homeES)) {
+                                                        matchObj = m;
+                                                        matchKey = key;
+                                                        keyPrefix = stage.prefix;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (matchObj) break;
+                                    }
+
+                                    if (matchObj && matchKey) {
+                                        const finalMatchObj = (keyPrefix === "single") ? results[matchKey] : results[keyPrefix][matchKey];
+                                        if (finalMatchObj && finalMatchObj.score !== scoreStr) {
+                                            finalMatchObj.score = scoreStr;
+                                            console.log(`[Cross-Reference] Updated K.O. Match ${matchId} (${homeES}-${awayES}) to ${scoreStr}`);
+                                            changed = true;
+
+                                            // Automatically update honors if Third place / Final finishes
+                                            if (isFinished) {
+                                                let winner = "";
+                                                let loser = "";
+                                                const hGoals = parseInt(homeScore);
+                                                const aGoals = parseInt(awayScore);
+                                                if (!isNaN(hGoals) && !isNaN(aGoals)) {
+                                                    if (hGoals > aGoals) {
+                                                        winner = homeES;
+                                                        loser = awayES;
+                                                    } else if (hGoals < aGoals) {
+                                                        winner = awayES;
+                                                        loser = homeES;
+                                                    } else {
+                                                        if (!isNaN(penH) && !isNaN(penA)) {
+                                                            if (penH > penA) {
+                                                                winner = homeES;
+                                                                loser = awayES;
+                                                            } else if (penH < penA) {
+                                                                winner = awayES;
+                                                                loser = homeES;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                if (winner && loser) {
+                                                    if (matchKey === "final_match") {
+                                                        results.honor_champ = winner;
+                                                        results.honor_runner = loser;
+                                                    } else if (matchKey === "r3_4_match") {
+                                                        results.honor_3rd = winner;
+                                                        results.honor_4th = loser;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        if (isLiveGame) {
+                                            const lookupId = (keyPrefix === "single") ? `single:${matchKey}` : `${keyPrefix}:${matchKey}`;
+                                            provisionalMatches.add(lookupId);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        } catch (irError) {
+            console.error("Error cross-referencing with worldcup26.ir API:", irError);
+        }
 
         // Set the provisionalMatches list in results object so it matches
         results.provisionalMatches = Array.from(provisionalMatches);
