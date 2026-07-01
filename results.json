@@ -176,15 +176,15 @@
     },
     "2E-2I": {
       "matchup": "Costa de Marfil-Noruega",
-      "score": ""
+      "score": "1-2"
     },
     "1I-3CDFGH": {
       "matchup": "Francia-Suecia",
-      "score": ""
+      "score": "3-0"
     },
     "1A-3CEFHI": {
       "matchup": "México-Ecuador",
-      "score": ""
+      "score": "2-0"
     },
     "1L-3EHIJK": {
       "matchup": "Inglaterra-RD Congo",
@@ -223,7 +223,15 @@
       "score": ""
     }
   },
-  "r16_teams": [],
+  "r16_teams": [
+    "Canadá",
+    "Brasil",
+    "Paraguay",
+    "Marruecos",
+    "Noruega",
+    "Francia",
+    "México"
+  ],
   "r16_matches": {
     "W73-W75": {
       "matchup": "Por determinar-Por determinar",

@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function initApp() {
     try {
         // Load static porra configuration
-        const dataResponse = await fetch('porra_data.json');
+        const dataResponse = await fetch(`porra_data.json?t=${Date.now()}`);
         porraData = await dataResponse.json();
         
         // Clean up spreadsheet artifact group labels (e.g. "Pos", 1, 2, 3, 4) in-place
@@ -228,7 +228,7 @@ async function initApp() {
         }
         
         if (!officialResults) {
-            const resResponse = await fetch('results.json');
+            const resResponse = await fetch(`results.json?t=${Date.now()}`);
             officialResults = await resResponse.json();
             console.log("Loaded official results from results.json");
         }
@@ -358,22 +358,12 @@ function isR4Completed() {
 }
 
 function isStageActive(stageName) {
-    if (stageName === 'r32_matches' || stageName === 'r32_teams') {
-        return isGroupStageCompleted();
+    if (stageName === 'group_stage' || stageName === 'group_standings') {
+        return true;
     }
-    if (stageName === 'r16_matches' || stageName === 'r16_teams') {
-        return isR32Completed();
-    }
-    if (stageName === 'r8_matches' || stageName === 'r8_teams') {
-        return isR16Completed();
-    }
-    if (stageName === 'r4_matches' || stageName === 'r4_teams') {
-        return isR8Completed();
-    }
-    if (stageName === 'r3_4_match' || stageName === 'final_match' || stageName === 'r3_4_teams' || stageName === 'final_teams') {
-        return isR4Completed();
-    }
-    return true; // Group stage matches are always active
+    // Todas las fases eliminatorias (K.O.) se activan una vez que la fase de grupos está completada,
+    // de modo que se puedan ir sumando provisionalmente los puntos de los equipos clasificados y partidos disputados.
+    return isGroupStageCompleted();
 }
 
 // Fill Round of 32 matchups and qualified teams provisionally based on group standings
@@ -856,10 +846,13 @@ function calculateStandings() {
         if (isStageActive('r32_teams')) {
             const r32_teams_pred = playerPreds.r32_teams || {};
             const r32_actual = results.r32_teams || [];
-            const r32_official = officialResults.r32_teams || [];
+            let r32_official = officialResults.r32_teams || [];
+            if ((!r32_official || r32_official.length === 0) && isGroupStageCompleted()) {
+                r32_official = r32_actual;
+            }
             Object.values(r32_teams_pred).forEach(team => {
                 if (r32_actual.includes(team)) {
-                    const ruleVal = Number(porraData.rules.r32_qualified || 1.0);
+                    const ruleVal = Number(porraData.rules.r32_qualified || 2.0);
                     if (r32_official.includes(team)) {
                         rawKOPointsFixed += ruleVal;
                     }
@@ -897,10 +890,13 @@ function calculateStandings() {
         if (isStageActive('r16_teams')) {
             const r16_teams_pred = playerPreds.r16_teams || {};
             const r16_actual = results.r16_teams || [];
-            const r16_official = officialResults.r16_teams || [];
+            let r16_official = officialResults.r16_teams || [];
+            if ((!r16_official || r16_official.length === 0) && isR32Completed()) {
+                r16_official = r16_actual;
+            }
             Object.values(r16_teams_pred).forEach(team => {
                 if (r16_actual.includes(team)) {
-                    const ruleVal = Number(porraData.rules.r16_qualified || 1.0);
+                    const ruleVal = Number(porraData.rules.r16_qualified || 2.0);
                     if (r16_official.includes(team)) {
                         rawKOPointsFixed += ruleVal;
                     }
@@ -938,10 +934,13 @@ function calculateStandings() {
         if (isStageActive('r8_teams')) {
             const r8_teams_pred = playerPreds.r8_teams || {};
             const r8_actual = results.r8_teams || [];
-            const r8_official = officialResults.r8_teams || [];
+            let r8_official = officialResults.r8_teams || [];
+            if ((!r8_official || r8_official.length === 0) && isR16Completed()) {
+                r8_official = r8_actual;
+            }
             Object.values(r8_teams_pred).forEach(team => {
                 if (r8_actual.includes(team)) {
-                    const ruleVal = Number(porraData.rules.r8_qualified || 1.0);
+                    const ruleVal = Number(porraData.rules.r8_qualified || 2.0);
                     if (r8_official.includes(team)) {
                         rawKOPointsFixed += ruleVal;
                     }
@@ -979,10 +978,13 @@ function calculateStandings() {
         if (isStageActive('r4_teams')) {
             const r4_teams_pred = playerPreds.r4_teams || {};
             const r4_actual = results.r4_teams || [];
-            const r4_official = officialResults.r4_teams || [];
+            let r4_official = officialResults.r4_teams || [];
+            if ((!r4_official || r4_official.length === 0) && isR8Completed()) {
+                r4_official = r4_actual;
+            }
             Object.values(r4_teams_pred).forEach(team => {
                 if (r4_actual.includes(team)) {
-                    const ruleVal = Number(porraData.rules.r4_qualified || 1.0);
+                    const ruleVal = Number(porraData.rules.r4_qualified || 2.0);
                     if (r4_official.includes(team)) {
                         rawKOPointsFixed += ruleVal;
                     }
@@ -1020,10 +1022,13 @@ function calculateStandings() {
         if (isStageActive('r3_4_teams')) {
             const r3_4_teams_pred = playerPreds.r3_4_teams || {};
             const r3_4_actual = results.r3_4_teams || [];
-            const r3_4_official = officialResults.r3_4_teams || [];
+            let r3_4_official = officialResults.r3_4_teams || [];
+            if ((!r3_4_official || r3_4_official.length === 0) && isR4Completed()) {
+                r3_4_official = r3_4_actual;
+            }
             Object.values(r3_4_teams_pred).forEach(team => {
                 if (r3_4_actual.includes(team)) {
-                    const ruleVal = Number(porraData.rules.r3_4_qualified || 1.0);
+                    const ruleVal = Number(porraData.rules.r3_4_qualified || 2.0);
                     if (r3_4_official.includes(team)) {
                         rawKOPointsFixed += ruleVal;
                     }
@@ -1036,7 +1041,10 @@ function calculateStandings() {
         if (isStageActive('final_teams')) {
             const final_teams_pred = playerPreds.final_teams || {};
             const final_actual = results.final_teams || [];
-            const final_official = officialResults.final_teams || [];
+            let final_official = officialResults.final_teams || [];
+            if ((!final_official || final_official.length === 0) && isR4Completed()) {
+                final_official = final_actual;
+            }
             Object.values(final_teams_pred).forEach(team => {
                 if (final_actual.includes(team)) {
                     const ruleVal = Number(porraData.rules.final_qualified || 2.0);
@@ -2289,7 +2297,7 @@ function openPlayerModal(playerName) {
     Object.entries(playerPreds.r32_teams || {}).forEach(([key, teamPred]) => {
         const qualified = results.r32_teams || [];
         const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 0.5 : 0.0;
+        const pts = isCorrect ? (Number(porraData.rules.r32_qualified || 2.0) / 2.0) : 0.0;
         addKOItem(r32Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
     });
     r32List.appendChild(r32Card);
@@ -2308,7 +2316,7 @@ function openPlayerModal(playerName) {
     Object.entries(playerPreds.r16_teams || {}).forEach(([key, teamPred]) => {
         const qualified = results.r16_teams || [];
         const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 0.5 : 0.0;
+        const pts = isCorrect ? (Number(porraData.rules.r16_qualified || 2.0) / 2.0) : 0.0;
         addKOItem(r16Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
     });
     r16List.appendChild(r16Card);
@@ -2327,7 +2335,7 @@ function openPlayerModal(playerName) {
     Object.entries(playerPreds.r8_teams || {}).forEach(([key, teamPred]) => {
         const qualified = results.r8_teams || [];
         const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 0.5 : 0.0;
+        const pts = isCorrect ? (Number(porraData.rules.r8_qualified || 2.0) / 2.0) : 0.0;
         addKOItem(r8Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
     });
     r8List.appendChild(r8Card);
@@ -2346,7 +2354,7 @@ function openPlayerModal(playerName) {
     Object.entries(playerPreds.r4_teams || {}).forEach(([key, teamPred]) => {
         const qualified = results.r4_teams || [];
         const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 0.5 : 0.0;
+        const pts = isCorrect ? (Number(porraData.rules.r4_qualified || 2.0) / 2.0) : 0.0;
         addKOItem(r4Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
     });
     finalSemisList.appendChild(r4Card);
@@ -2356,7 +2364,7 @@ function openPlayerModal(playerName) {
     Object.entries(playerPreds.final_teams || {}).forEach(([key, teamPred]) => {
         const qualified = results.final_teams || [];
         const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 1.0 : 0.0;
+        const pts = isCorrect ? (Number(porraData.rules.final_qualified || 2.0) / 2.0) : 0.0;
         addKOItem(finalCard, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
     });
     finalSemisList.appendChild(finalCard);
@@ -2366,7 +2374,7 @@ function openPlayerModal(playerName) {
     Object.entries(playerPreds.r3_4_teams || {}).forEach(([key, teamPred]) => {
         const qualified = results.r3_4_teams || [];
         const isCorrect = qualified.includes(teamPred);
-        const pts = isCorrect ? 0.5 : 0.0;
+        const pts = isCorrect ? (Number(porraData.rules.r3_4_qualified || 2.0) / 2.0) : 0.0;
         addKOItem(r3_4Card, key, teamPred, isCorrect ? "Clasificado" : (qualified.length > 0 ? "Eliminado" : "-"), pts);
     });
     finalSemisList.appendChild(r3_4Card);
@@ -3837,6 +3845,14 @@ function approveProvisionalScores() {
         }
     });
     
+    // Copy qualified teams lists to official results so they are persisted
+    const teamLists = ['r32_teams', 'r16_teams', 'r8_teams', 'r4_teams', 'r3_4_teams', 'final_teams'];
+    teamLists.forEach(listKey => {
+        if (results[listKey] && Array.isArray(results[listKey]) && results[listKey].length > 0) {
+            officialResults[listKey] = [...results[listKey]];
+        }
+    });
+
     // Clear provisional matches (since they are now official)
     provisionalMatches.clear();
     
