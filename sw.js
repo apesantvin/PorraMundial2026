@@ -1,5 +1,5 @@
-const CACHE_NAME = 'porra-mundial-v5';
-const DYNAMIC_CACHE_NAME = 'porra-dynamic-v5';
+const CACHE_NAME = 'porra-mundial-v6';
+const DYNAMIC_CACHE_NAME = 'porra-dynamic-v6';
 
 // Static assets to precache on install
 const STATIC_ASSETS = [
@@ -80,6 +80,7 @@ self.addEventListener('fetch', (event) => {
             if (event.request.mode === 'navigate') {
               return caches.match('./index.html');
             }
+            return new Response('', { status: 408, statusText: 'Network Error' });
           });
         })
     );
@@ -104,6 +105,7 @@ self.addEventListener('fetch', (event) => {
           .catch(() => {
             // Silence errors for analytics/external scripts if offline
             console.log('[Service Worker] Offline fetch failed for external asset:', event.request.url);
+            return new Response('', { status: 408, statusText: 'Network Error' });
           });
       })
     );

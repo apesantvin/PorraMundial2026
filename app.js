@@ -1,3 +1,7 @@
+// Data version — increment this whenever porra_data.json match IDs are reindexed
+// so that any stale localStorage draft is automatically discarded.
+const RESULTS_DATA_VERSION = 2;
+
 // State variables
 let porraData = null;
 let results = null;
@@ -187,50 +191,69 @@ async function initApp() {
         const draft = localStorage.getItem('porra_results_draft');
         if (draft) {
             try {
-                officialResults = JSON.parse(draft);
-                
-                // Migrate old K.O. keys if present in the draft
-                if (officialResults.r8_matches && officialResults.r8_matches["W89-W93"]) {
-                    console.log("Migrating results draft with old K.O. keys to new official structure...");
-                    
-                    const r8Mapping = {
-                        "W89-W93": "W89-W90",
-                        "W90-W94": "W93-W94",
-                        "W91-W95": "W91-W92",
-                        "W92-W96": "W95-W96"
-                    };
-                    const newR8Matches = {};
-                    Object.entries(officialResults.r8_matches).forEach(([oldKey, matchObj]) => {
-                        const newKey = r8Mapping[oldKey] || oldKey;
-                        newR8Matches[newKey] = matchObj;
-                    });
-                    officialResults.r8_matches = newR8Matches;
+                const parsedDraft = JSON.parse(draft);
 
-                    const r4Mapping = {
-                        "W97-W99": "W97-W98",
-                        "W98-W100": "W99-W100"
-                    };
-                    const newR4Matches = {};
-                    Object.entries(officialResults.r4_matches).forEach(([oldKey, matchObj]) => {
-                        const newKey = r4Mapping[oldKey] || oldKey;
-                        newR4Matches[newKey] = matchObj;
-                    });
-                    officialResults.r4_matches = newR4Matches;
-                    
-                    // Save the migrated draft back to localStorage
-                    localStorage.setItem('porra_results_draft', JSON.stringify(officialResults));
+                // Version check: discard draft if it was saved with an older data version
+                if (parsedDraft._dataVersion !== RESULTS_DATA_VERSION) {
+                    console.warn(`localStorage draft version mismatch (draft v${parsedDraft._dataVersion || 'unknown'} vs current v${RESULTS_DATA_VERSION}). Discarding stale draft.`);
+                    localStorage.removeItem('porra_results_draft');
+                } else {
+                    officialResults = parsedDraft;
+
+                    // Migrate old K.O. keys if present in the draft
+                    if (officialResults.r8_matches && officialResults.r8_matches["W89-W93"]) {
+                        console.log("Migrating results draft with old K.O. keys to new official structure...");
+
+                        const r8Mapping = {
+                            "W89-W93": "W89-W90",
+                            "W90-W94": "W93-W94",
+                            "W91-W95": "W91-W92",
+                            "W92-W96": "W95-W96"
+                        };
+                        const newR8Matches = {};
+                        Object.entries(officialResults.r8_matches).forEach(([oldKey, matchObj]) => {
+                            const newKey = r8Mapping[oldKey] || oldKey;
+                            newR8Matches[newKey] = matchObj;
+                        });
+                        officialResults.r8_matches = newR8Matches;
+
+                        const r4Mapping = {
+                            "W97-W99": "W97-W98",
+                            "W98-W100": "W99-W100"
+                        };
+                        const newR4Matches = {};
+                        Object.entries(officialResults.r4_matches).forEach(([oldKey, matchObj]) => {
+                            const newKey = r4Mapping[oldKey] || oldKey;
+                            newR4Matches[newKey] = matchObj;
+                        });
+                        officialResults.r4_matches = newR4Matches;
+
+                        // Save the migrated draft back to localStorage
+                        localStorage.setItem('porra_results_draft', JSON.stringify(officialResults));
+                    }
+
+                    console.log("Loaded official results from localStorage draft (v" + RESULTS_DATA_VERSION + ")");
                 }
-                
-                console.log("Loaded official results from localStorage draft");
             } catch (e) {
                 console.error("Error parsing localStorage draft", e);
+                localStorage.removeItem('porra_results_draft');
             }
         }
         
+        // Always fetch the server's results.json for group stage match scores.
+        // This makes results.json the single source of truth for group stage data,
+        // regardless of what the localStorage draft may contain.
+        // The localStorage draft is only used for KO stages and admin bonus entries.
+        const resResponse = await fetch(`results.json?t=${Date.now()}`);
+        const serverResults = await resResponse.json();
+        console.log("Loaded group stage results from results.json (server)");
+
         if (!officialResults) {
-            const resResponse = await fetch(`results.json?t=${Date.now()}`);
-            officialResults = await resResponse.json();
-            console.log("Loaded official results from results.json");
+            officialResults = serverResults;
+        } else {
+            // Merge: always use server's group stage scores and standings
+            officialResults.matches = serverResults.matches;
+            officialResults.group_standings = serverResults.group_standings;
         }
 
         // Clean officialResults template if some keys are missing
@@ -3134,6 +3157,46 @@ function translateTeam(teamObj) {
 
 const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "LIVE"]);
 
+// Builds a cache object containing only scores that are NOT already confirmed in officialResults.
+// This prevents the live cache from ever overwriting official results stored in results.json.
+function buildLiveOnlyCache() {
+    const cache = { matches: {}, provisionalMatches: Array.from(provisionalMatches) };
+
+    // Group stage: only cache scores that are provisional (live) and absent in officialResults
+    for (const [matchId, score] of Object.entries(results.matches || {})) {
+        const officialScore = officialResults && officialResults.matches ? (officialResults.matches[matchId] || "") : "";
+        if (officialScore.trim() === "" && score && score.trim() !== "") {
+            cache.matches[matchId] = score;
+        }
+    }
+
+    // K.O. stages: only cache scores absent in officialResults
+    const koStages = ['r32_matches', 'r16_matches', 'r8_matches', 'r4_matches'];
+    koStages.forEach(stage => {
+        if (!results[stage]) return;
+        cache[stage] = {};
+        for (const [key, matchObj] of Object.entries(results[stage])) {
+            const officialScore = (officialResults && officialResults[stage] && officialResults[stage][key])
+                ? (officialResults[stage][key].score || "")
+                : "";
+            if (officialScore.trim() === "" && matchObj && matchObj.score && matchObj.score.trim() !== "") {
+                cache[stage][key] = { ...matchObj };
+            }
+        }
+    });
+
+    // Single matches (final, 3rd/4th)
+    ['r3_4_match', 'final_match'].forEach(key => {
+        if (!results[key]) return;
+        const officialScore = (officialResults && officialResults[key]) ? (officialResults[key].score || "") : "";
+        if (officialScore.trim() === "" && results[key].score && results[key].score.trim() !== "") {
+            cache[key] = { ...results[key] };
+        }
+    });
+
+    return cache;
+}
+
 async function fetchAndProcessLiveResults() {
     const apiKey = 'fca19012e1774fee9c2d4382feb0325b';
     const targetUrl = `https://api.football-data.org/v4/competitions/WC/matches?t=${Date.now()}`;
@@ -3281,7 +3344,7 @@ async function fetchAndProcessLiveResults() {
             // 2. OR the match is currently live
             // 3. OR the match was marked as provisional (so we need to capture the final score if it transitioned to finished)
             // 4. OR the match finished recently
-            const shouldProcess = (currentScore.trim() === "") || isLive || wasProvisional || isRecentFinished;
+            const shouldProcess = (currentScore.trim() === "");
 
             if (!shouldProcess) {
                 return;
@@ -3422,145 +3485,15 @@ async function fetchAndProcessLiveResults() {
         // Fill provisional K.O. matchups so team names are resolved for matching
         fillProvisionalKOMatchups();
 
-        // Cross-reference / fallback with worldcup26.ir API
-        try {
-            const irTargetUrl = `https://worldcup26.ir/get/games?t=${Date.now()}`;
-            const irProxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(irTargetUrl)}`;
-            const irResponse = await fetch(irProxyUrl, { cache: "no-store" });
-            if (irResponse.ok) {
-                const irData = await irResponse.json();
-                if (irData && irData.games && irData.games.length > 0) {
-                    console.log(`Cross-referencing scores with ${irData.games.length} games from worldcup26.ir API...`);
-                    irData.games.forEach(game => {
-                        const isFinished = (game.finished === "TRUE" || game.time_elapsed === "finished");
-                        const isLiveGame = (game.finished === "FALSE" && game.time_elapsed !== "notstarted");
-                        
-                        if (isFinished || isLiveGame) {
-                            const homeES = translateENToESTeam(game.home_team_name_en);
-                            const awayES = translateENToESTeam(game.away_team_name_en);
-                            
-                            const homeScore = game.home_score;
-                            const awayScore = game.away_score;
-                            
-                            if (homeES && awayES && homeScore !== null && awayScore !== null && homeScore !== "" && awayScore !== "") {
-                                let scoreStr = `${homeScore}-${awayScore}`;
-                                
-                                const penH = parseInt(game.home_penalty_score);
-                                const penA = parseInt(game.away_penalty_score);
-                                if (!isNaN(penH) && !isNaN(penA) && (penH > 0 || penA > 0)) {
-                                    scoreStr += ` (${penH}-${penA})`;
-                                }
-
-                                const matchId = String(game.id);
-                                if (parseInt(matchId) >= 1 && parseInt(matchId) <= 72) {
-                                    // Group stage
-                                    if (results.matches[matchId] !== scoreStr && scoreStr !== "") {
-                                        results.matches[matchId] = scoreStr;
-                                        console.log(`[Cross-Reference] Updated Match ${matchId} (${homeES} vs ${awayES}) to ${scoreStr}`);
-                                        changed = true;
-                                        
-                                        if (isLiveGame) {
-                                            provisionalMatches.add(matchId);
-                                        }
-                                    }
-                                } else {
-                                    // Knockout stage: match by teams
-                                    let matchObj = null;
-                                    let matchKey = "";
-                                    let keyPrefix = "";
-
-                                    const stagesToSearch = [
-                                        { prefix: 'r32_matches', list: results.r32_matches },
-                                        { prefix: 'r16_matches', list: results.r16_matches },
-                                        { prefix: 'r8_matches', list: results.r8_matches },
-                                        { prefix: 'r4_matches', list: results.r4_matches },
-                                        { prefix: 'single', list: { "r3_4_match": results.r3_4_match, "final_match": results.final_match } }
-                                    ];
-
-                                    for (const stage of stagesToSearch) {
-                                        for (const [key, m] of Object.entries(stage.list || {})) {
-                                            if (m && m.matchup) {
-                                                const teams = m.matchup.split('-').map(t => t.trim());
-                                                if (teams.length === 2) {
-                                                    if ((teams[0] === homeES && teams[1] === awayES) || (teams[0] === awayES && teams[1] === homeES)) {
-                                                        matchObj = m;
-                                                        matchKey = key;
-                                                        keyPrefix = stage.prefix;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        if (matchObj) break;
-                                    }
-
-                                    if (matchObj && matchKey) {
-                                        const finalMatchObj = (keyPrefix === "single") ? results[matchKey] : results[keyPrefix][matchKey];
-                                        if (finalMatchObj && finalMatchObj.score !== scoreStr) {
-                                            finalMatchObj.score = scoreStr;
-                                            console.log(`[Cross-Reference] Updated K.O. Match ${matchId} (${homeES}-${awayES}) to ${scoreStr}`);
-                                            changed = true;
-
-                                            // Automatically update honors if Third place / Final finishes
-                                            if (isFinished) {
-                                                let winner = "";
-                                                let loser = "";
-                                                const hGoals = parseInt(homeScore);
-                                                const aGoals = parseInt(awayScore);
-                                                if (!isNaN(hGoals) && !isNaN(aGoals)) {
-                                                    if (hGoals > aGoals) {
-                                                        winner = homeES;
-                                                        loser = awayES;
-                                                    } else if (hGoals < aGoals) {
-                                                        winner = awayES;
-                                                        loser = homeES;
-                                                    } else {
-                                                        if (!isNaN(penH) && !isNaN(penA)) {
-                                                            if (penH > penA) {
-                                                                winner = homeES;
-                                                                loser = awayES;
-                                                            } else if (penH < penA) {
-                                                                winner = awayES;
-                                                                loser = homeES;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                
-                                                if (winner && loser) {
-                                                    if (matchKey === "final_match") {
-                                                        results.honor_champ = winner;
-                                                        results.honor_runner = loser;
-                                                    } else if (matchKey === "r3_4_match") {
-                                                        results.honor_3rd = winner;
-                                                        results.honor_4th = loser;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        
-                                        if (isLiveGame) {
-                                            const lookupId = (keyPrefix === "single") ? `single:${matchKey}` : `${keyPrefix}:${matchKey}`;
-                                            provisionalMatches.add(lookupId);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-            }
-        } catch (irError) {
-            console.error("Error cross-referencing with worldcup26.ir API:", irError);
-        }
-
         // Set the provisionalMatches list in results object so it matches
         results.provisionalMatches = Array.from(provisionalMatches);
 
         // Check if anything changed in results JSON to avoid drawing
         if (JSON.stringify(results) !== prevResultsJSON) {
             console.log("Results changed. Redrawing UI and saving to live cache...");
-            localStorage.setItem('porra_live_results_cache', JSON.stringify(results));
+            // Only save provisional (live) scores to cache, not scores already in officialResults
+            const liveOnlyCache = buildLiveOnlyCache();
+            localStorage.setItem('porra_live_results_cache', JSON.stringify(liveOnlyCache));
             updateAppUI();
             return true;
         } else {
@@ -3856,7 +3789,8 @@ function approveProvisionalScores() {
     // Clear provisional matches (since they are now official)
     provisionalMatches.clear();
     
-    // Save officialResults to localStorage draft
+    // Save officialResults to localStorage draft (with version stamp)
+    officialResults._dataVersion = RESULTS_DATA_VERSION;
     localStorage.setItem('porra_results_draft', JSON.stringify(officialResults));
     
     // Clear the live scores cache since they are now official in the draft
@@ -4116,6 +4050,19 @@ function calculateGroupStandings() {
     Object.keys(groupTeams).forEach(g => {
         const teams = groupTeams[g].map(name => teamStats[name]);
         teams.sort((a, b) => {
+            // Sort by official group standings if defined in results.group_standings
+            let posA = 99;
+            let posB = 99;
+            for (let i = 1; i <= 4; i++) {
+                const officialTeam = results.group_standings[`${i}º GRUPO ${g}`];
+                if (officialTeam && officialTeam.toLowerCase() === a.name.toLowerCase()) posA = i;
+                if (officialTeam && officialTeam.toLowerCase() === b.name.toLowerCase()) posB = i;
+            }
+            if (posA !== 99 && posB !== 99) {
+                return posA - posB;
+            }
+
+            // Fallback to calculated stats
             if (b.pts !== a.pts) return b.pts - a.pts;
             if (b.dg !== a.dg) return b.dg - a.dg;
             if (b.gf !== a.gf) return b.gf - a.gf;
