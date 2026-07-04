@@ -254,6 +254,55 @@ async function initApp() {
             // Merge: always use server's group stage scores and standings
             officialResults.matches = serverResults.matches;
             officialResults.group_standings = serverResults.group_standings;
+
+            // Merge K.O. matches: if server has a score/matchup, use it to update the draft
+            const koStages = ['r32_matches', 'r16_matches', 'r8_matches', 'r4_matches'];
+            koStages.forEach(stage => {
+                if (serverResults[stage]) {
+                    if (!officialResults[stage]) officialResults[stage] = {};
+                    for (const [key, matchObj] of Object.entries(serverResults[stage])) {
+                        if (!officialResults[stage][key]) {
+                            officialResults[stage][key] = { ...matchObj };
+                        } else {
+                            if (matchObj.matchup && matchObj.matchup.trim() !== "") {
+                                officialResults[stage][key].matchup = matchObj.matchup;
+                            }
+                            if (matchObj.score && matchObj.score.trim() !== "") {
+                                officialResults[stage][key].score = matchObj.score;
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Merge single matches (final, 3rd place)
+            ['r3_4_match', 'final_match'].forEach(key => {
+                if (serverResults[key]) {
+                    if (!officialResults[key]) officialResults[key] = { matchup: '', score: '' };
+                    if (serverResults[key].matchup && serverResults[key].matchup.trim() !== "") {
+                        officialResults[key].matchup = serverResults[key].matchup;
+                    }
+                    if (serverResults[key].score && serverResults[key].score.trim() !== "") {
+                        officialResults[key].score = serverResults[key].score;
+                    }
+                }
+            });
+
+            // Merge team lists
+            const teamLists = ['r32_teams', 'r16_teams', 'r8_teams', 'r4_teams', 'r3_4_teams', 'final_teams'];
+            teamLists.forEach(listKey => {
+                if (serverResults[listKey] && Array.isArray(serverResults[listKey]) && serverResults[listKey].length > 0) {
+                    officialResults[listKey] = [...serverResults[listKey]];
+                }
+            });
+
+            // Merge honors list
+            const honors = ['honor_champ', 'honor_runner', 'honor_3rd', 'honor_4th', 'honor_scorer', 'honor_assists', 'honor_mvp', 'honor_gk', 'honor_young'];
+            honors.forEach(honorKey => {
+                if (serverResults[honorKey] && serverResults[honorKey].trim() !== "") {
+                    officialResults[honorKey] = serverResults[honorKey];
+                }
+            });
         }
 
         // Clean officialResults template if some keys are missing
@@ -327,55 +376,55 @@ function updateAppUI() {
 
 // Completion check helpers for tournament stages
 function isGroupStageCompleted() {
-    if (!porraData || !porraData.matches || !officialResults || !officialResults.matches) return false;
+    if (!porraData || !porraData.matches || !results || !results.matches) return false;
     const groupMatches = porraData.matches.filter(m => m.jor === 'J1' || m.jor === 'J2' || m.jor === 'J3');
     if (groupMatches.length === 0) return false;
     return groupMatches.every(m => {
-        const score = officialResults.matches[m.id];
+        const score = results.matches[m.id];
         return score && score.trim() !== "";
     });
 }
 
 function isR32Completed() {
     if (!isGroupStageCompleted()) return false;
-    if (!officialResults || !officialResults.r32_matches) return false;
-    const keys = Object.keys(officialResults.r32_matches);
+    if (!results || !results.r32_matches) return false;
+    const keys = Object.keys(results.r32_matches);
     if (keys.length < 16) return false;
     return keys.every(key => {
-        const m = officialResults.r32_matches[key];
+        const m = results.r32_matches[key];
         return m && m.score && m.score.trim() !== "";
     });
 }
 
 function isR16Completed() {
     if (!isR32Completed()) return false;
-    if (!officialResults || !officialResults.r16_matches) return false;
-    const keys = Object.keys(officialResults.r16_matches);
+    if (!results || !results.r16_matches) return false;
+    const keys = Object.keys(results.r16_matches);
     if (keys.length < 8) return false;
     return keys.every(key => {
-        const m = officialResults.r16_matches[key];
+        const m = results.r16_matches[key];
         return m && m.score && m.score.trim() !== "";
     });
 }
 
 function isR8Completed() {
     if (!isR16Completed()) return false;
-    if (!officialResults || !officialResults.r8_matches) return false;
-    const keys = Object.keys(officialResults.r8_matches);
+    if (!results || !results.r8_matches) return false;
+    const keys = Object.keys(results.r8_matches);
     if (keys.length < 4) return false;
     return keys.every(key => {
-        const m = officialResults.r8_matches[key];
+        const m = results.r8_matches[key];
         return m && m.score && m.score.trim() !== "";
     });
 }
 
 function isR4Completed() {
     if (!isR8Completed()) return false;
-    if (!officialResults || !officialResults.r4_matches) return false;
-    const keys = Object.keys(officialResults.r4_matches);
+    if (!results || !results.r4_matches) return false;
+    const keys = Object.keys(results.r4_matches);
     if (keys.length < 2) return false;
     return keys.every(key => {
-        const m = officialResults.r4_matches[key];
+        const m = results.r4_matches[key];
         return m && m.score && m.score.trim() !== "";
     });
 }
@@ -581,9 +630,9 @@ function fillProvisionalKOMatchups() {
         "W74-W77": ["W75", "W78"],
         "W76-W78": ["W74", "W77"],
         "W79-W80": ["W79", "W80"],
-        "W83-W84": ["W83", "W84"],
-        "W81-W82": ["W81", "W82"],
-        "W86-W88": ["W86", "W87"],
+        "W83-W84": ["W84", "W83"],
+        "W81-W82": ["W82", "W81"],
+        "W86-W88": ["W87", "W86"],
         "W85-W87": ["W85", "W88"]
     };
 
@@ -1858,16 +1907,32 @@ function renderKORounds() {
                 isProvisionalMatchup = true;
             }
         }
-        if (r.prefix === 'r32_matches' && !isGroupStageCompleted()) {
-            isProvisionalMatchup = true;
-        } else if (r.prefix === 'r16_matches' && !isR32Completed()) {
-            isProvisionalMatchup = true;
-        } else if (r.prefix === 'r8_matches' && !isR16Completed()) {
-            isProvisionalMatchup = true;
-        } else if (r.prefix === 'r4_matches' && !isR8Completed()) {
-            isProvisionalMatchup = true;
-        } else if (r.prefix === 'single' && !isR4Completed()) {
-            isProvisionalMatchup = true;
+        const isMatchupResolved = matchup && matchup.trim() !== "" && !matchup.includes("Por determinar") && !matchup.match(/\d/);
+
+        if (r.prefix === 'r32_matches') {
+            if (!isGroupStageCompleted()) {
+                isProvisionalMatchup = true;
+            }
+        } else if (r.prefix === 'r16_matches') {
+            const hasPrevRoundStarted = isGroupStageCompleted();
+            if (!hasPrevRoundStarted || (!isR32Completed() && !isMatchupResolved)) {
+                isProvisionalMatchup = true;
+            }
+        } else if (r.prefix === 'r8_matches') {
+            const hasPrevRoundStarted = isR32Completed();
+            if (!hasPrevRoundStarted || (!isR16Completed() && !isMatchupResolved)) {
+                isProvisionalMatchup = true;
+            }
+        } else if (r.prefix === 'r4_matches') {
+            const hasPrevRoundStarted = isR16Completed();
+            if (!hasPrevRoundStarted || (!isR8Completed() && !isMatchupResolved)) {
+                isProvisionalMatchup = true;
+            }
+        } else if (r.prefix === 'single') {
+            const hasPrevRoundStarted = isR8Completed();
+            if (!hasPrevRoundStarted || (!isR4Completed() && !isMatchupResolved)) {
+                isProvisionalMatchup = true;
+            }
         }
 
         const provAsterisk = isProvisionalMatchup ? ' <span style="color:var(--color-success); font-weight:bold; font-size:0.9rem; line-height:0;" title="Cruce provisional (Fase de grupos o ronda previa activa)">*</span>' : '';
@@ -2494,14 +2559,27 @@ function evaluateKOBracketMatch(card, stageLabel, matchKey, predVal, actualMatch
             isProvisionalMatchup = true;
         }
     }
-    if (actualMatchesList === results.r32_matches && !isGroupStageCompleted()) {
-        isProvisionalMatchup = true;
-    } else if (actualMatchesList === results.r16_matches && !isR32Completed()) {
-        isProvisionalMatchup = true;
-    } else if (actualMatchesList === results.r8_matches && !isR16Completed()) {
-        isProvisionalMatchup = true;
-    } else if (actualMatchesList === results.r4_matches && !isR4Completed()) {
-        isProvisionalMatchup = true;
+    const isMatchupResolved = actualMatchup && actualMatchup.trim() !== "" && !actualMatchup.includes("Por determinar") && !actualMatchup.match(/\d/);
+
+    if (actualMatchesList === results.r32_matches) {
+        if (!isGroupStageCompleted()) {
+            isProvisionalMatchup = true;
+        }
+    } else if (actualMatchesList === results.r16_matches) {
+        const hasPrevRoundStarted = isGroupStageCompleted();
+        if (!hasPrevRoundStarted || (!isR32Completed() && !isMatchupResolved)) {
+            isProvisionalMatchup = true;
+        }
+    } else if (actualMatchesList === results.r8_matches) {
+        const hasPrevRoundStarted = isR32Completed();
+        if (!hasPrevRoundStarted || (!isR16Completed() && !isMatchupResolved)) {
+            isProvisionalMatchup = true;
+        }
+    } else if (actualMatchesList === results.r4_matches) {
+        const hasPrevRoundStarted = isR16Completed();
+        if (!hasPrevRoundStarted || (!isR8Completed() && !isMatchupResolved)) {
+            isProvisionalMatchup = true;
+        }
     }
 
     const provLabel = isProvisionalMatchup ? ' <span style="color:var(--color-success); font-weight:700;" title="Cruces provisionales">*</span>' : '';

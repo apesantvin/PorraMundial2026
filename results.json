@@ -188,39 +188,39 @@
     },
     "1L-3EHIJK": {
       "matchup": "Inglaterra-RD Congo",
-      "score": ""
+      "score": "2-1"
     },
     "1G-3AEHIJ": {
       "matchup": "Bélgica-Senegal",
-      "score": ""
+      "score": "3-2"
     },
     "1D-3BEFIJ": {
       "matchup": "Estados Unidos-Bosnia y Herzegovina",
-      "score": ""
+      "score": "2-0"
     },
     "1H-2J": {
       "matchup": "España-Austria",
-      "score": ""
+      "score": "3-0"
     },
     "2K-2L": {
       "matchup": "Portugal-Croacia",
-      "score": ""
+      "score": "2-1"
     },
     "1B-3EFGIJ": {
       "matchup": "Suiza-Argelia",
-      "score": ""
+      "score": "2-0"
     },
     "2D-2G": {
       "matchup": "Australia-Egipto",
-      "score": ""
+      "score": "1-1 (2-4)"
     },
     "1J-2H": {
       "matchup": "Argentina-Cabo Verde",
-      "score": ""
+      "score": "3-2"
     },
     "1K-3DEIJL": {
       "matchup": "Colombia-Ghana",
-      "score": ""
+      "score": "1-0"
     }
   },
   "r16_teams": [
@@ -230,39 +230,48 @@
     "Marruecos",
     "Noruega",
     "Francia",
-    "México"
+    "México",
+    "Inglaterra",
+    "Bélgica",
+    "Estados Unidos",
+    "España",
+    "Portugal",
+    "Suiza",
+    "Egipto",
+    "Argentina",
+    "Colombia"
   ],
   "r16_matches": {
     "W73-W75": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Canadá-Marruecos",
       "score": ""
     },
     "W74-W77": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Paraguay-Francia",
       "score": ""
     },
     "W76-W78": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Brasil-Noruega",
       "score": ""
     },
     "W79-W80": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "México-Inglaterra",
       "score": ""
     },
     "W83-W84": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Portugal-España",
       "score": ""
     },
     "W81-W82": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Estados Unidos-Bélgica",
       "score": ""
     },
     "W86-W88": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Argentina-Egipto",
       "score": ""
     },
     "W85-W87": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Suiza-Colombia",
       "score": ""
     }
   },
