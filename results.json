@@ -244,27 +244,27 @@
   "r16_matches": {
     "W73-W75": {
       "matchup": "Canadá-Marruecos",
-      "score": ""
+      "score": "0-3"
     },
     "W74-W77": {
       "matchup": "Paraguay-Francia",
-      "score": ""
+      "score": "0-1"
     },
     "W76-W78": {
       "matchup": "Brasil-Noruega",
-      "score": ""
+      "score": "1-2"
     },
     "W79-W80": {
       "matchup": "México-Inglaterra",
-      "score": ""
+      "score": "2-3"
     },
     "W83-W84": {
       "matchup": "Portugal-España",
-      "score": ""
+      "score": "0-1"
     },
     "W81-W82": {
       "matchup": "Estados Unidos-Bélgica",
-      "score": ""
+      "score": "1-4"
     },
     "W86-W88": {
       "matchup": "Argentina-Egipto",
@@ -275,18 +275,25 @@
       "score": ""
     }
   },
-  "r8_teams": [],
+  "r8_teams": [
+    "Francia",
+    "Marruecos",
+    "Noruega",
+    "Inglaterra",
+    "España",
+    "Bélgica"
+  ],
   "r8_matches": {
     "W89-W90": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Francia-Marruecos",
       "score": ""
     },
     "W93-W94": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "España-Bélgica",
       "score": ""
     },
     "W91-W92": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Noruega-Inglaterra",
       "score": ""
     },
     "W95-W96": {
