@@ -159,6 +159,7 @@ function mergeLiveCache() {
         // Provisional matches list
         if (parsedCache.provisionalMatches && Array.isArray(parsedCache.provisionalMatches)) {
             parsedCache.provisionalMatches.forEach(id => provisionalMatches.add(String(id)));
+            results.provisionalMatches = Array.from(provisionalMatches);
         }
     } catch (e) {
         console.error("Error parsing live results cache:", e);
@@ -946,7 +947,7 @@ function calculateStandings() {
                     const actual = r32_actual_matches[matchKey];
                     if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                         const outcome = calcOutcomePoints(actual.score, predScore);
-                        const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                        const isProv = provisionalMatches && (provisionalMatches.has(matchKey) || provisionalMatches.has("r32_matches:" + matchKey));
                         if (isProv) {
                             rawKOPointsProvisional += outcome.points;
                         } else {
@@ -990,7 +991,7 @@ function calculateStandings() {
                     const actual = r16_actual_matches[matchKey];
                     if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                         const outcome = calcOutcomePoints(actual.score, predScore);
-                        const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                        const isProv = provisionalMatches && (provisionalMatches.has(matchKey) || provisionalMatches.has("r16_matches:" + matchKey));
                         if (isProv) {
                             rawKOPointsProvisional += outcome.points;
                         } else {
@@ -1007,7 +1008,7 @@ function calculateStandings() {
             const r8_teams_pred = playerPreds.r8_teams || {};
             const r8_actual = results.r8_teams || [];
             let r8_official = officialResults.r8_teams || [];
-            if ((!r8_official || r8_official.length === 0) && isR16Completed()) {
+            if (!r8_official || r8_official.length === 0) {
                 r8_official = r8_actual;
             }
             Object.values(r8_teams_pred).forEach(team => {
@@ -1034,7 +1035,7 @@ function calculateStandings() {
                     const actual = r8_actual_matches[matchKey];
                     if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                         const outcome = calcOutcomePoints(actual.score, predScore);
-                        const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                        const isProv = provisionalMatches && (provisionalMatches.has(matchKey) || provisionalMatches.has("r8_matches:" + matchKey));
                         if (isProv) {
                             rawKOPointsProvisional += outcome.points;
                         } else {
@@ -1051,7 +1052,7 @@ function calculateStandings() {
             const r4_teams_pred = playerPreds.r4_teams || {};
             const r4_actual = results.r4_teams || [];
             let r4_official = officialResults.r4_teams || [];
-            if ((!r4_official || r4_official.length === 0) && isR8Completed()) {
+            if (!r4_official || r4_official.length === 0) {
                 r4_official = r4_actual;
             }
             Object.values(r4_teams_pred).forEach(team => {
@@ -1078,7 +1079,7 @@ function calculateStandings() {
                     const actual = r4_actual_matches[matchKey];
                     if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                         const outcome = calcOutcomePoints(actual.score, predScore);
-                        const isProv = provisionalMatches && provisionalMatches.has(matchKey);
+                        const isProv = provisionalMatches && (provisionalMatches.has(matchKey) || provisionalMatches.has("r4_matches:" + matchKey));
                         if (isProv) {
                             rawKOPointsProvisional += outcome.points;
                         } else {
@@ -1095,7 +1096,7 @@ function calculateStandings() {
             const r3_4_teams_pred = playerPreds.r3_4_teams || {};
             const r3_4_actual = results.r3_4_teams || [];
             let r3_4_official = officialResults.r3_4_teams || [];
-            if ((!r3_4_official || r3_4_official.length === 0) && isR4Completed()) {
+            if (!r3_4_official || r3_4_official.length === 0) {
                 r3_4_official = r3_4_actual;
             }
             Object.values(r3_4_teams_pred).forEach(team => {
@@ -1114,7 +1115,7 @@ function calculateStandings() {
             const final_teams_pred = playerPreds.final_teams || {};
             const final_actual = results.final_teams || [];
             let final_official = officialResults.final_teams || [];
-            if ((!final_official || final_official.length === 0) && isR4Completed()) {
+            if (!final_official || final_official.length === 0) {
                 final_official = final_actual;
             }
             Object.values(final_teams_pred).forEach(team => {
@@ -1138,7 +1139,7 @@ function calculateStandings() {
                 const actual = results.r3_4_match;
                 if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                     const outcome = calcOutcomePoints(actual.score, predScore);
-                    const isProv = provisionalMatches && provisionalMatches.has("r3-4");
+                    const isProv = provisionalMatches && (provisionalMatches.has("r3-4") || provisionalMatches.has("single:r3_4_match"));
                     if (isProv) {
                         rawKOPointsProvisional += outcome.points;
                     } else {
@@ -1159,7 +1160,7 @@ function calculateStandings() {
                 const actual = results.final_match;
                 if (actual && actual.matchup === predMatchup && actual.score && actual.score.trim() !== "") {
                     const outcome = calcOutcomePoints(actual.score, predScore);
-                    const isProv = provisionalMatches && provisionalMatches.has("final");
+                    const isProv = provisionalMatches && (provisionalMatches.has("final") || provisionalMatches.has("single:final_match"));
                     if (isProv) {
                         rawKOPointsProvisional += outcome.points;
                     } else {
@@ -3551,6 +3552,7 @@ async function fetchAndProcessLiveResults() {
 
                 if (isStageMatchUpdated) {
                     console.log(`Updated K.O. Match [${item.stage}]: ${home} ${scoreStr} ${away} [Status: ${status}]`);
+                    changed = true;
                 }
 
                 // Track K.O. match as provisional if currently in progress
@@ -3566,9 +3568,10 @@ async function fetchAndProcessLiveResults() {
         // Set the provisionalMatches list in results object so it matches
         results.provisionalMatches = Array.from(provisionalMatches);
 
-        // Check if anything changed in results JSON to avoid drawing
-        if (JSON.stringify(results) !== prevResultsJSON) {
-            console.log("Results changed. Redrawing UI and saving to live cache...");
+        // Check if anything changed in results JSON or provisional matches to avoid drawing
+        const provisionalMatchesChanged = (JSON.stringify(Array.from(provisionalMatches).sort()) !== JSON.stringify(prevProvisionalMatches.sort()));
+        if (JSON.stringify(results) !== prevResultsJSON || provisionalMatchesChanged) {
+            console.log("Results or provisional matches changed. Redrawing UI and saving to live cache...");
             // Only save provisional (live) scores to cache, not scores already in officialResults
             const liveOnlyCache = buildLiveOnlyCache();
             localStorage.setItem('porra_live_results_cache', JSON.stringify(liveOnlyCache));
