@@ -268,25 +268,27 @@
     },
     "W86-W88": {
       "matchup": "Argentina-Egipto",
-      "score": ""
+      "score": "3-2"
     },
     "W85-W87": {
       "matchup": "Suiza-Colombia",
-      "score": ""
+      "score": "0-0 (4-3)"
     }
   },
   "r8_teams": [
-    "Francia",
     "Marruecos",
+    "Francia",
     "Noruega",
     "Inglaterra",
     "España",
-    "Bélgica"
+    "Bélgica",
+    "Argentina",
+    "Suiza"
   ],
   "r8_matches": {
     "W89-W90": {
       "matchup": "Francia-Marruecos",
-      "score": ""
+      "score": "2-0"
     },
     "W93-W94": {
       "matchup": "España-Bélgica",
@@ -297,14 +299,16 @@
       "score": ""
     },
     "W95-W96": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Argentina-Suiza",
       "score": ""
     }
   },
-  "r4_teams": [],
+  "r4_teams": [
+    "Francia"
+  ],
   "r4_matches": {
     "W97-W98": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Francia-Por determinar",
       "score": ""
     },
     "W99-W100": {
