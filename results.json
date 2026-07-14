@@ -292,27 +292,30 @@
     },
     "W93-W94": {
       "matchup": "España-Bélgica",
-      "score": ""
+      "score": "2-1"
     },
     "W91-W92": {
       "matchup": "Noruega-Inglaterra",
-      "score": ""
+      "score": "1-2"
     },
     "W95-W96": {
       "matchup": "Argentina-Suiza",
-      "score": ""
+      "score": "3-1"
     }
   },
   "r4_teams": [
-    "Francia"
+    "Francia",
+    "España",
+    "Inglaterra",
+    "Argentina"
   ],
   "r4_matches": {
     "W97-W98": {
-      "matchup": "Francia-Por determinar",
+      "matchup": "Francia-España",
       "score": ""
     },
     "W99-W100": {
-      "matchup": "Por determinar-Por determinar",
+      "matchup": "Inglaterra-Argentina",
       "score": ""
     }
   },
