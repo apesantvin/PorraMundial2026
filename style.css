@@ -2053,6 +2053,101 @@ span.placeholder-flag i {
     display: none !important;
 }
 
+/* World Cup champion styles in KO bracket */
+.final-champion-row-highlight {
+    background: linear-gradient(90deg, rgba(251, 191, 36, 0.08) 0%, rgba(251, 191, 36, 0) 100%) !important;
+    border-left: 3px solid #fbbf24 !important;
+}
+
+.final-champion-team-text {
+    color: #fbbf24 !important;
+    font-weight: 700 !important;
+    text-shadow: 0 0 8px rgba(251, 191, 36, 0.3);
+}
+
+.final-champion-crown {
+    animation: pulseTrophy 2s infinite alternate ease-in-out;
+}
+
+@keyframes pulseTrophy {
+    0% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(251, 191, 36, 0.4)); }
+    100% { transform: scale(1.25); filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.8)); }
+}
+
+/* Champion Hero Card Styles */
+.champion-hero-card {
+    background: linear-gradient(135deg, #7c1d1d 0%, #b45309 50%, #7c1d1d 100%);
+    background-size: 200% 200%;
+    animation: gradientShift 6s ease infinite;
+    border: 2px solid #fbbf24;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(180, 83, 9, 0.25);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    color: #fff;
+    font-family: 'Outfit', sans-serif;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.champion-hero-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1.5rem;
+    position: relative;
+    z-index: 2;
+}
+
+.champion-hero-flag {
+    font-size: 3rem;
+    animation: pulseFlag 1.5s infinite alternate ease-in-out;
+}
+
+@keyframes pulseFlag {
+    from { transform: scale(0.9) rotate(-8deg); }
+    to { transform: scale(1.1) rotate(8deg); }
+}
+
+.champion-hero-text h2 {
+    font-size: 1.7rem;
+    font-weight: 800;
+    margin: 0;
+    text-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+    letter-spacing: 1px;
+}
+
+.champion-hero-text p {
+    margin: 0.5rem 0 0 0;
+    font-size: 1rem;
+    color: #fef08a;
+    font-weight: 500;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 576px) {
+    .champion-hero-flag {
+        display: none;
+    }
+    .champion-hero-text h2 {
+        font-size: 1.35rem;
+    }
+    .champion-hero-text p {
+        font-size: 0.85rem;
+    }
+    .champion-hero-card {
+        padding: 1rem;
+        margin-bottom: 1.25rem;
+    }
+}
+
 
 
 

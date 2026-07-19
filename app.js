@@ -1,6 +1,6 @@
 // Data version — increment this whenever porra_data.json match IDs are reindexed
 // so that any stale localStorage draft is automatically discarded.
-const RESULTS_DATA_VERSION = 3;
+const RESULTS_DATA_VERSION = 5;
 
 // State variables
 let porraData = null;
@@ -1424,30 +1424,98 @@ function renderStandings(standings) {
         tbody.appendChild(tr);
     });
 
-    // Celebrate the winner with confetti if the tournament is completed and we haven't celebrated yet this session
+    // Celebrate Spain (World Cup Champion) and then Koldo (Porra Winner)
     if (results.final_match && results.final_match.score && results.final_match.score.trim() !== "") {
+        const heroCard = document.getElementById('champion-hero-card');
+        if (heroCard) {
+            heroCard.style.display = 'block';
+        }
+
         if (standings && standings.length > 0) {
             console.log("Winner celebration check. Winner:", standings[0].name, "Confetti loaded:", typeof confetti === 'function');
-            if (!sessionStorage.getItem('porra_winner_celebrated')) {
-                sessionStorage.setItem('porra_winner_celebrated', 'true');
+            
+            // 1. Run Spain celebration first if not run yet
+            if (!sessionStorage.getItem('porra_spain_celebrated')) {
+                sessionStorage.setItem('porra_spain_celebrated', 'true');
                 
                 let retries = 0;
-                const tryCelebrate = () => {
+                const tryCelebrateSpain = () => {
+                    if (typeof confetti === 'function') {
+                        triggerSpainCelebration();
+                        // Schedule Koldo winner celebration with a 3.5s delay
+                        setTimeout(() => {
+                            if (!sessionStorage.getItem('porra_winner_celebrated')) {
+                                sessionStorage.setItem('porra_winner_celebrated', 'true');
+                                triggerWinnerCelebration(standings[0].name);
+                            }
+                        }, 3500);
+                    } else if (retries < 15) {
+                        retries++;
+                        setTimeout(tryCelebrateSpain, 300);
+                    } else {
+                        // Fallback if confetti fails
+                        if (!sessionStorage.getItem('porra_winner_celebrated')) {
+                            sessionStorage.setItem('porra_winner_celebrated', 'true');
+                            triggerWinnerCelebration(standings[0].name);
+                        }
+                    }
+                };
+                tryCelebrateSpain();
+            } else if (!sessionStorage.getItem('porra_winner_celebrated')) {
+                // 2. If Spain was celebrated, but winner was not celebrated (e.g. reload or navigation)
+                sessionStorage.setItem('porra_winner_celebrated', 'true');
+                let retries = 0;
+                const tryCelebrateWinner = () => {
                     if (typeof confetti === 'function') {
                         triggerWinnerCelebration(standings[0].name);
                     } else if (retries < 15) {
                         retries++;
-                        console.log(`Waiting for confetti to load... Attempt ${retries}/15`);
-                        setTimeout(tryCelebrate, 300);
+                        setTimeout(tryCelebrateWinner, 300);
                     } else {
-                        console.warn("Confetti library failed to load, triggering toast celebration only.");
                         triggerWinnerCelebration(standings[0].name);
                     }
                 };
-                tryCelebrate();
+                tryCelebrateWinner();
             }
         }
+    } else {
+        const heroCard = document.getElementById('champion-hero-card');
+        if (heroCard) {
+            heroCard.style.display = 'none';
+        }
     }
+}
+
+// Function to trigger a beautiful red and yellow fireworks confetti celebration for Spain
+function triggerSpainCelebration() {
+    if (typeof confetti !== 'function') return;
+
+    const duration = 3 * 1000;
+    const animationEnd = Date.now() + duration;
+    const colors = ['#ff0000', '#ffeb3b', '#d32f2f', '#fbc02d']; // Spanish Flag Red & Yellow variants
+
+    (function frame() {
+        confetti({
+            particleCount: 4,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0, y: 0.8 },
+            colors: colors,
+            zIndex: 9999
+        });
+        confetti({
+            particleCount: 4,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1, y: 0.8 },
+            colors: colors,
+            zIndex: 9999
+        });
+
+        if (Date.now() < animationEnd) {
+            requestAnimationFrame(frame);
+        }
+    }());
 }
 
 // Function to trigger a beautiful confetti and toast celebration for the winner
@@ -2026,6 +2094,8 @@ function renderKORounds() {
 
         let homeScore = '';
         let awayScore = '';
+        let isFinalWinnerHome = false;
+        let isFinalWinnerAway = false;
         if (isPlayed) {
             const mainPart = score.split(' ')[0];
             const parts = mainPart.split('-');
@@ -2038,6 +2108,22 @@ function renderKORounds() {
                 const penA = matchPenalties[2];
                 homeScore += ` <span class="penalty-score" style="font-size:0.72rem; color:var(--text-muted); font-weight:normal;">(${penH})</span>`;
                 awayScore += ` <span class="penalty-score" style="font-size:0.72rem; color:var(--text-muted); font-weight:normal;">(${penA})</span>`;
+            }
+
+            // Determine if there is a final match winner
+            if (matchKey === 'final_match') {
+                const h = parseInt(parts[0]);
+                const a = parseInt(parts[1]);
+                if (h > a) {
+                    isFinalWinnerHome = true;
+                } else if (h < a) {
+                    isFinalWinnerAway = true;
+                } else if (matchPenalties && matchPenalties.length === 3) {
+                    const penH = parseInt(matchPenalties[1]);
+                    const penA = parseInt(matchPenalties[2]);
+                    if (penH > penA) isFinalWinnerHome = true;
+                    else if (penH < penA) isFinalWinnerAway = true;
+                }
             }
         }
 
@@ -2128,25 +2214,30 @@ function renderKORounds() {
         const tooltipHome = getTeamTooltip(r.key, matchKey, 0, t1, isProvisionalMatchup);
         const tooltipAway = getTeamTooltip(r.key, matchKey, 1, t2, isProvisionalMatchup);
 
+        const crownHome = isFinalWinnerHome ? '<span class="final-champion-crown" title="¡Campeón del Mundo! 🏆" style="margin-left:0.4rem; color:#fbbf24; display:inline-block;"><i class="fa-solid fa-trophy"></i></span>' : '';
+        const crownAway = isFinalWinnerAway ? '<span class="final-champion-crown" title="¡Campeón del Mundo! 🏆" style="margin-left:0.4rem; color:#fbbf24; display:inline-block;"><i class="fa-solid fa-trophy"></i></span>' : '';
+        const classHome = isFinalWinnerHome ? 'final-champion-team-text' : '';
+        const classAway = isFinalWinnerAway ? 'final-champion-team-text' : '';
+
         card.innerHTML = `
             <div class="ko-match-card-header">
                 <span style="font-weight: 600; color: var(--color-primary-hover);" title="${slotTitle}">${slotLabel}${provAsterisk}</span>
                 <span title="Fecha de juego">${matchDateStr} <span class="expand-icon" style="margin-left:0.25rem; color:var(--text-muted); font-size:0.75rem;"><i class="fa-regular fa-eye"></i></span></span>
             </div>
             <div class="ko-match-card-body">
-                <div class="ko-match-team-row">
+                <div class="ko-match-team-row ${isFinalWinnerHome ? 'final-champion-row-highlight' : ''}">
                     <div class="ko-match-team-info" title="${tooltipHome}">
                         ${flagHome}
-                        <span class="team-name">${fifaHome}${provHomeAsterisk}</span>
+                        <span class="team-name ${classHome}">${fifaHome}${provHomeAsterisk}${crownHome}</span>
                     </div>
-                    <div class="ko-match-team-score">${isPlayed ? homeScore : '-'}</div>
+                    <div class="ko-match-team-score ${classHome}">${isPlayed ? homeScore : '-'}</div>
                 </div>
-                <div class="ko-match-team-row">
+                <div class="ko-match-team-row ${isFinalWinnerAway ? 'final-champion-row-highlight' : ''}">
                     <div class="ko-match-team-info" title="${tooltipAway}">
                         ${flagAway}
-                        <span class="team-name">${fifaAway}${provAwayAsterisk}</span>
+                        <span class="team-name ${classAway}">${fifaAway}${provAwayAsterisk}${crownAway}</span>
                     </div>
-                    <div class="ko-match-team-score">${isPlayed ? awayScore : '-'}</div>
+                    <div class="ko-match-team-score ${classAway}">${isPlayed ? awayScore : '-'}</div>
                 </div>
             </div>
         `;

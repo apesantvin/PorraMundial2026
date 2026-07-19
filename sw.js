@@ -1,5 +1,5 @@
-const CACHE_NAME = 'porra-mundial-v7';
-const DYNAMIC_CACHE_NAME = 'porra-dynamic-v7';
+const CACHE_NAME = 'porra-mundial-v9';
+const DYNAMIC_CACHE_NAME = 'porra-dynamic-v9';
 
 // Static assets to precache on install
 const STATIC_ASSETS = [
