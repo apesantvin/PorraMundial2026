@@ -1,6 +1,6 @@
 // Data version — increment this whenever porra_data.json match IDs are reindexed
 // so that any stale localStorage draft is automatically discarded.
-const RESULTS_DATA_VERSION = 2;
+const RESULTS_DATA_VERSION = 3;
 
 // State variables
 let porraData = null;
@@ -1181,8 +1181,8 @@ function calculateStandings() {
         const preds = porraData.predictions[p].honor_list || {};
 
         const mappings = {
-            'Campeón': { key: 'honor_champ', ruleKey: 'honor_champ' },
             'Subcampeón': { key: 'honor_runner', ruleKey: 'honor_runner' },
+            'Campeón': { key: 'honor_champ', ruleKey: 'honor_champ' },
             'Tercero': { key: 'honor_3rd', ruleKey: 'honor_3rd' },
             'Cuarto': { key: 'honor_4th', ruleKey: 'honor_4th' },
             'Goleador': { key: 'honor_scorer', ruleKey: 'honor_scorer' },
@@ -1193,10 +1193,21 @@ function calculateStandings() {
         };
 
         Object.entries(preds).forEach(([item, teamPred]) => {
-            // Check if item contains one of the mapping labels
             let matchedMapping = null;
+            const itemLower = item.toLowerCase();
             for (const [label, mapObj] of Object.entries(mappings)) {
-                if (item.toLowerCase().includes(label.toLowerCase())) {
+                let match = false;
+                if (label === 'Tercero') {
+                    match = itemLower.includes('tercero') || itemLower.includes('3º');
+                } else if (label === 'M.V.P.') {
+                    match = itemLower.includes('m.v.p.') || (itemLower.includes('balón de oro') && !itemLower.includes('plata') && !itemLower.includes('bronce'));
+                } else if (label === 'Goleador') {
+                    match = itemLower.includes('goleador') && !itemLower.includes('plata') && !itemLower.includes('bronce');
+                } else {
+                    match = itemLower.includes(label.toLowerCase());
+                }
+                
+                if (match) {
                     matchedMapping = mapObj;
                     break;
                 }
@@ -1205,7 +1216,18 @@ function calculateStandings() {
             if (matchedMapping) {
                 const actual = results[matchedMapping.key];
                 if (actual && actual.trim() !== "") {
-                    const isCorrect = String(actual).toLowerCase() === String(teamPred).toLowerCase();
+                    const normalizeString = s => {
+                        if (!s) return "";
+                        return s.toString().toLowerCase()
+                            .normalize("NFD")
+                            .replace(/[\u0300-\u036f]/g, "")
+                            .trim();
+                    };
+                    const actualNorm = normalizeString(actual);
+                    const predNorm = normalizeString(teamPred);
+                    const isCorrect = actualNorm === predNorm || 
+                                      (actualNorm.includes(predNorm) && predNorm.length > 3) || 
+                                      (predNorm.includes(actualNorm) && actualNorm.length > 3);
                     if (isCorrect) {
                         const rulePoints = Number(porraData.rules[matchedMapping.ruleKey] || 1.0);
                         rawHonorPoints += rulePoints;
@@ -2351,8 +2373,8 @@ function openPlayerModal(playerName) {
     // Cuadro de honor (Campeón, Subcampeón, MVP, etc.)
     const honorCard = createKOCard("Cuadro de Honor y Premios Especiales");
     const mappings = {
-        'Campeón': { key: 'honor_champ', label: 'Campeón Mundial', pts: 5.0 },
         'Subcampeón': { key: 'honor_runner', label: 'Subcampeón', pts: 3.0 },
+        'Campeón': { key: 'honor_champ', label: 'Campeón Mundial', pts: 5.0 },
         'Tercero': { key: 'honor_3rd', label: 'Tercero', pts: 2.0 },
         'Cuarto': { key: 'honor_4th', label: 'Cuarto', pts: 1.0 },
         'Goleador': { key: 'honor_scorer', label: 'Máximo Goleador', pts: 0.5 },
@@ -2364,15 +2386,38 @@ function openPlayerModal(playerName) {
 
     Object.entries(playerPreds.honor_list || {}).forEach(([item, teamPred]) => {
         let matched = null;
+        const itemLower = item.toLowerCase();
         for (const [label, mapObj] of Object.entries(mappings)) {
-            if (item.toLowerCase().includes(label.toLowerCase())) {
+            let match = false;
+            if (label === 'Tercero') {
+                match = itemLower.includes('tercero') || itemLower.includes('3º');
+            } else if (label === 'M.V.P.') {
+                match = itemLower.includes('m.v.p.') || (itemLower.includes('balón de oro') && !itemLower.includes('plata') && !itemLower.includes('bronce'));
+            } else if (label === 'Goleador') {
+                match = itemLower.includes('goleador') && !itemLower.includes('plata') && !itemLower.includes('bronce');
+            } else {
+                match = itemLower.includes(label.toLowerCase());
+            }
+            
+            if (match) {
                 matched = mapObj;
                 break;
             }
         }
         if (matched) {
             const actual = results[matched.key] || '';
-            const isCorrect = actual && actual.toLowerCase() === teamPred.toLowerCase();
+            const normalizeString = s => {
+                if (!s) return "";
+                return s.toString().toLowerCase()
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .trim();
+            };
+            const actualNorm = normalizeString(actual);
+            const predNorm = normalizeString(teamPred);
+            const isCorrect = actual && (actualNorm === predNorm || 
+                              (actualNorm.includes(predNorm) && predNorm.length > 3) || 
+                              (predNorm.includes(actualNorm) && actualNorm.length > 3));
             const pts = isCorrect ? matched.pts : 0.0;
             addKOItem(honorCard, matched.label, teamPred, actual, pts);
         }

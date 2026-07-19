@@ -312,31 +312,37 @@
   "r4_matches": {
     "W97-W98": {
       "matchup": "Francia-España",
-      "score": ""
+      "score": "0-2"
     },
     "W99-W100": {
       "matchup": "Inglaterra-Argentina",
-      "score": ""
+      "score": "1-2"
     }
   },
-  "r3_4_teams": [],
-  "final_teams": [],
+  "r3_4_teams": [
+    "Francia",
+    "Inglaterra"
+  ],
+  "final_teams": [
+    "España",
+    "Argentina"
+  ],
   "r3_4_match": {
-    "matchup": "Por determinar-Por determinar",
-    "score": ""
+    "matchup": "Francia-Inglaterra",
+    "score": "4-6"
   },
   "final_match": {
-    "matchup": "Por determinar-Por determinar",
-    "score": ""
+    "matchup": "España-Argentina",
+    "score": "1-0"
   },
-  "honor_champ": "",
-  "honor_runner": "",
-  "honor_3rd": "",
-  "honor_4th": "",
-  "honor_scorer": "",
-  "honor_assists": "",
-  "honor_mvp": "",
-  "honor_gk": "",
-  "honor_young": "",
+  "honor_champ": "España",
+  "honor_runner": "Argentina",
+  "honor_3rd": "Inglaterra",
+  "honor_4th": "Francia",
+  "honor_scorer": "Kylian Mbappé",
+  "honor_assists": "Michael Olise",
+  "honor_mvp": "Rodri",
+  "honor_gk": "Unai Simón",
+  "honor_young": "Pau Cubarsí",
   "provisionalMatches": []
 }
