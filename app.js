@@ -1394,6 +1394,7 @@ function renderStandings(standings) {
         if (index === 0) {
             rankClass = 'player-rank-gold';
             rankVal = `<i class="fa-solid fa-trophy"></i> 1º`;
+            tr.classList.add('winner-row-highlight');
         } else if (index === 1) {
             rankClass = 'player-rank-silver';
             rankVal = `2º`;
@@ -1422,6 +1423,140 @@ function renderStandings(standings) {
         `;
         tbody.appendChild(tr);
     });
+
+    // Celebrate the winner with confetti if the tournament is completed and we haven't celebrated yet this session
+    if (results.final_match && results.final_match.score && results.final_match.score.trim() !== "") {
+        if (standings && standings.length > 0) {
+            console.log("Winner celebration check. Winner:", standings[0].name, "Confetti loaded:", typeof confetti === 'function');
+            if (!sessionStorage.getItem('porra_winner_celebrated')) {
+                sessionStorage.setItem('porra_winner_celebrated', 'true');
+                
+                let retries = 0;
+                const tryCelebrate = () => {
+                    if (typeof confetti === 'function') {
+                        triggerWinnerCelebration(standings[0].name);
+                    } else if (retries < 15) {
+                        retries++;
+                        console.log(`Waiting for confetti to load... Attempt ${retries}/15`);
+                        setTimeout(tryCelebrate, 300);
+                    } else {
+                        console.warn("Confetti library failed to load, triggering toast celebration only.");
+                        triggerWinnerCelebration(standings[0].name);
+                    }
+                };
+                tryCelebrate();
+            }
+        }
+    }
+}
+
+// Function to trigger a beautiful confetti and toast celebration for the winner
+function triggerWinnerCelebration(winnerName) {
+    // Toast notification for the winner
+    const toast = document.createElement('div');
+    toast.className = 'winner-celebration-toast';
+    toast.innerHTML = `
+        <div class="winner-toast-content">
+            <span class="winner-toast-crown">👑</span>
+            <div class="winner-toast-text">
+                <h3>¡Tenemos Ganador!</h3>
+                <p>Enhorabuena a <strong>${winnerName}</strong> por ganar la Porra del Mundial 2026 🏆</p>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    
+    // Add styling dynamically
+    const style = document.createElement('style');
+    style.innerHTML = `
+        .winner-celebration-toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 2px solid #fbbf24;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+            padding: 1rem 1.5rem;
+            z-index: 10000;
+            color: #f8fafc;
+            font-family: 'Outfit', sans-serif;
+            animation: slideInWinnerToast 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            max-width: 380px;
+        }
+        @keyframes slideInWinnerToast {
+            from { transform: translateY(100%) scale(0.9); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        @keyframes slideOutWinnerToast {
+            from { transform: translateY(0) scale(1); opacity: 1; }
+            to { transform: translateY(100%) scale(0.9); opacity: 0; }
+        }
+        .winner-toast-content {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .winner-toast-crown {
+            font-size: 2.2rem;
+            animation: bounceCrown 1s infinite alternate;
+        }
+        @keyframes bounceCrown {
+            from { transform: translateY(0) rotate(-10deg); }
+            to { transform: translateY(-5px) rotate(10deg); }
+        }
+        .winner-toast-text h3 {
+            margin: 0;
+            color: #fbbf24;
+            font-size: 1.15rem;
+            font-weight: 700;
+        }
+        .winner-toast-text p {
+            margin: 0.25rem 0 0 0;
+            font-size: 0.9rem;
+            color: #cbd5e1;
+        }
+        
+        /* Pulse effect for the winner row */
+        .winner-row-highlight {
+            animation: pulseWinnerRow 2s infinite alternate;
+            position: relative;
+        }
+        @keyframes pulseWinnerRow {
+            0% { background-color: rgba(251, 191, 36, 0.04); }
+            100% { background-color: rgba(251, 191, 36, 0.12); }
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Auto-remove toast after 8 seconds
+    setTimeout(() => {
+        toast.style.animation = 'slideOutWinnerToast 0.5s ease forwards';
+        setTimeout(() => toast.remove(), 500);
+    }, 8000);
+
+    // Confetti rain
+    if (typeof confetti === 'function') {
+        const duration = 5 * 1000;
+        const animationEnd = Date.now() + duration;
+        const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+
+        function randomInRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        const interval = setInterval(function() {
+            const timeLeft = animationEnd - Date.now();
+
+            if (timeLeft <= 0) {
+                return clearInterval(interval);
+            }
+
+            const particleCount = 50 * (timeLeft / duration);
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+        }, 250);
+    }
 }
 
 // Render matches calendar grid
